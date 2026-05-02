@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
@@ -19,7 +19,7 @@
             body { padding: 0; background: #000; align-items: stretch; }
             #phone-wrapper { width: 100%; height: 100dvh; border-radius: 0; padding: 0; box-shadow: none; background: transparent; }
             #phone-wrapper::before { display: none; }
-            #phone-shell { border-radius: 0; height: 100dvh; }
+            #phone-shell { border-radius: 0; height: 100dvh; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
         }
         
         .nav { height: 48px; background: var(--bg-color); border-bottom: 0.5px solid var(--border-color); display: flex; align-items: center; justify-content: center; flex-shrink: 0; z-index: 1000; position: relative;}
