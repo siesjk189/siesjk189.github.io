@@ -212,6 +212,21 @@ function startChat(id) {
 }
 
 // 核心功能：4.空发送读取 API | 15.API 报错详情
+function showTyping(char) {
+    const area = document.getElementById('chat-area');
+    if(!area) return;
+    removeTyping();
+    const div = document.createElement('div');
+    div.className = 'msg ai'; div.id = 'typing-indicator';
+    div.innerHTML = `<img src="${char.a}" class="avatar" style="margin:0"><div class="bubble" style="color:#999; font-style:italic;">对方输入中…</div>`;
+    area.appendChild(div);
+    area.scrollTop = area.scrollHeight;
+}
+function removeTyping() {
+    const el = document.getElementById('typing-indicator');
+    if(el) el.remove();
+}
+
 async function fetchAI(isAuto = false) {
     const tid = isAuto || curChatId;
     if(!tid) return;
@@ -220,7 +235,9 @@ async function fetchAI(isAuto = false) {
     const history = db.m[tid] || [];
     const last = history.length > 0 ? history[history.length-1].c : "";
     const activeWI = db.w.filter(i => (i.bind==='all' || i.bind==tid) && (i.isAlways || (i.k && last.includes(i.k)))).map(i=>i.v).join('\n');
-    
+
+    if(curChatId == tid) showTyping(char);
+
     try {
         const base = db.api.u.replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '');
         const endpoint = `${base}/chat/completions`;
@@ -230,10 +247,15 @@ async function fetchAI(isAuto = false) {
         });
         const data = await res.json();
         if(data.error) throw new Error(data.error.message || "接口返回错误");
-        db.m[tid].push({ r:'ai', c:data.choices[0].message.content, t:Date.now() });
+        const full = data.choices[0].message.content;
+        // 按换行拆分，过滤空行，每段作为一条消息
+        const parts = full.split('\n').map(s=>s.trim()).filter(s=>s.length>0);
+        parts.forEach(p => db.m[tid].push({ r:'ai', c:p, t:Date.now() }));
+        removeTyping();
         commit(); if(curChatId==tid) renderChat();
         if(isAuto) resetTimer(tid);
     } catch(e) {
+        removeTyping();
         alert("API 错误详情：\n" + e.message);
     }
 }
