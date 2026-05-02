@@ -7,8 +7,17 @@
     <style>
         :root { --wechat-green: #07c160; --bg-color: #ededed; --border-color: #d8d8d8; --link-color: #576b95; }
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, sans-serif; }
-        body { background: #000; display: flex; justify-content: center; height: 100vh; overflow: hidden; }
-        #phone-shell { width: 100%; max-width: 414px; height: 100vh; background: var(--bg-color); position: relative; display: flex; flex-direction: column; }
+        body { background: #1a1a2e; display: flex; justify-content: center; align-items: center; min-height: 100vh; overflow: auto; padding: 20px 0; }
+        #phone-wrapper { position: relative; width: 390px; height: 844px; background: #111; border-radius: 55px; padding: 12px; box-shadow: 0 0 0 2px #333, 0 0 0 4px #555, 0 30px 80px rgba(0,0,0,0.8), inset 0 0 0 1px #222; flex-shrink: 0; }
+        #phone-wrapper::before { content: ''; position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: 120px; height: 30px; background: #111; border-radius: 0 0 20px 20px; z-index: 9999; }
+        #phone-shell { width: 100%; height: 100%; background: var(--bg-color); position: relative; display: flex; flex-direction: column; border-radius: 44px; overflow: hidden; }
+
+        @media (max-width: 480px) {
+            body { padding: 0; background: #000; align-items: stretch; }
+            #phone-wrapper { width: 100%; height: 100vh; border-radius: 0; padding: 0; box-shadow: none; background: transparent; }
+            #phone-wrapper::before { display: none; }
+            #phone-shell { border-radius: 0; height: 100vh; }
+        }
         
         .nav { height: 48px; background: var(--bg-color); border-bottom: 0.5px solid var(--border-color); display: flex; align-items: center; justify-content: center; flex-shrink: 0; z-index: 1000; position: relative;}
         .nav-title { font-weight: bold; font-size: 16px; }
@@ -27,7 +36,7 @@
         .cell { display: flex; padding: 12px 16px; border-bottom: 0.5px solid #eee; align-items: center; cursor: pointer; background: #fff; }
         .avatar { width: 48px; height: 48px; border-radius: 6px; background: #eee; object-fit: cover; margin-right: 12px; flex-shrink: 0; }
         
-        #chat-room { position: fixed; inset: 0; max-width: 414px; margin: auto; background: var(--bg-color) no-repeat center/cover; z-index: 2000; display: none; flex-direction: column; }
+        #chat-room { position: absolute; inset: 0; background: var(--bg-color) no-repeat center/cover; z-index: 2000; display: none; flex-direction: column; }
         .chat-msgs { flex: 1; padding: 15px; overflow-y: auto; }
         .msg { display: flex; margin-bottom: 16px; width: 100%; }
         .msg.user { flex-direction: row-reverse; }
@@ -55,6 +64,7 @@
 </head>
 <body>
 
+<div id="phone-wrapper">
 <div id="phone-shell">
     <div class="nav"><div id="nav-title" class="nav-title">信息</div></div>
     
@@ -121,7 +131,9 @@
         </div>
         <div id="modal-body" style="flex:1; overflow-y:auto;"></div>
     </div>
-</div>
+
+</div><!-- end phone-shell -->
+</div><!-- end phone-wrapper -->
 
 <style id="RUNTIME_CSS"></style>
 
