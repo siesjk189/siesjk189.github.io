@@ -26,6 +26,7 @@
         .nav-title { font-weight: bold; font-size: 16px; }
         .back-btn { position: absolute; left: 15px; cursor: pointer; color: #000; font-size: 18px; }
         .more-btn { position: absolute; right: 15px; cursor: pointer; font-weight: bold; font-size: 18px; color: #333; }
+        .nav-action { position: absolute; right: 15px; color: var(--link-color); cursor: pointer; font-size: 14px; font-weight: 500; }
         
         .viewport { flex: 1; overflow-y: auto; position: relative; }
         .page { display: none; height: 100%; }
@@ -69,7 +70,10 @@
 
 <div id="phone-wrapper">
 <div id="phone-shell">
-    <div class="nav"><div id="nav-title" class="nav-title">信息</div></div>
+    <div class="nav">
+        <div id="nav-title" class="nav-title">信息</div>
+        <div id="nav-extra"></div>
+    </div>
     
     <div class="viewport">
         <div id="p-msg" class="page active"></div>
@@ -84,7 +88,7 @@
                     <img id="mo-avatar" class="mo-u-avatar">
                 </div>
             </div>
-            <div class="cell" onclick="postMoment()" style="justify-content:center; color:var(--link-color); font-weight:500;"> 发布朋友圈</div>
+            <div class="cell" onclick="postMoment()" style="justify-content:center; color:var(--link-color); font-weight:500;"> 手动发布动态</div>
             <div id="moments-list"></div>
         </div>
         <div id="p-me" class="page">
@@ -92,9 +96,10 @@
             <div class="cell" onclick="openStickerManager()">♚表情包管理</div>
             <div class="cell" onclick="openWorldBook()">♛世界书管理</div>
             <div class="cell" onclick="editGlobalCSS()">♞全局 UI CSS </div>
-            <div class="cell" onclick="toggleTimeAware()" id="time-aware-cell">⏰ 时间感知：<span id="time-aware-status" style="color:#999;">关闭</span></div>
-            <div class="cell" onclick="exportData()" style="color:var(--wechat-green)">💾 导出/保存当前配置 </div>
-            <div class="cell" onclick="importData()">📂 导入配置数据 </div>
+            <div class="cell" onclick="toggleTimeAware()" id="time-aware-cell">♟ 时间感知：<span id="time-aware-status" style="color:#999;">关闭</span></div>
+            <div class="cell" onclick="toggleNotify()" id="notify-cell">♝ 消息通知：<span id="notify-status" style="color:#999;">关闭</span></div>
+            <div class="cell" onclick="exportData()" style="color:var(--wechat-green)">※ 导出/保存当前配置 </div>
+            <div class="cell" onclick="importData()">※ 导入配置数据 </div>
             
             <div class="api-panel">
                 <span class="api-hint">API 接口设置</span>
@@ -143,13 +148,16 @@
         <div id="modal-body" style="flex:1; overflow-y:auto;"></div>
     </div>
 
-</div></div><style id="RUNTIME_CSS"></style>
+</div>
+</div>
+
+<style id="RUNTIME_CSS"></style>
 
 <script>
-const DB_KEY = "ST_V66_FINAL";
+const DB_KEY = "ST_V66_MOMENTS_AI";
 let db = JSON.parse(localStorage.getItem(DB_KEY)) || {
     u: { n:'用户', a:'', p:'', bg:'', css:'' },
-    c: [], m: {}, mo: [], w: [], s: [], api: { u:'', k:'', model:'gpt-3.5-turbo' }, g_css: '', timeAware: false
+    c: [], m: {}, mo: [], w: [], s: [], api: { u:'', k:'', model:'' }, g_css: '', timeAware: false, notifyOn: false
 };
 
 let curChatId = null;
@@ -164,12 +172,10 @@ function applyCSS() {
     document.getElementById('RUNTIME_CSS').innerHTML = css;
 }
 
-// 键盘弹出/收起自动适配，消除黑色区域
 if(window.visualViewport) {
     window.visualViewport.addEventListener('resize', () => {
         const shell = document.getElementById('phone-shell');
         shell.style.height = window.visualViewport.height + 'px';
-        // 键盘收起后滚动聊天区域到底部
         const area = document.getElementById('chat-area');
         if(area) area.scrollTop = area.scrollHeight;
     });
@@ -185,13 +191,12 @@ function render() {
     document.getElementById('mo-cover').style.backgroundImage = db.u.bg ? `url(${db.u.bg})` : 'none';
     document.getElementById('api-url').value = db.api.u || '';
     document.getElementById('api-key').value = db.api.k || '';
+    
     const sel = document.getElementById('api-model');
     if(db.api.models && db.api.models.length) {
         sel.innerHTML = db.api.models.map(m => `<option value="${m}" ${m===db.api.model?'selected':''}>${m}</option>`).join('');
-    } else if(db.api.model) {
-        sel.innerHTML = `<option value="${db.api.model}">${db.api.model}</option>`;
     }
-    
+
     document.getElementById('p-msg').innerHTML = db.c.map(i => {
         const h = db.m[i.id] || [];
         const last = h.length > 0 ? h[h.length-1].c : '[暂无对话]';
@@ -200,6 +205,8 @@ function render() {
 
     const taEl = document.getElementById('time-aware-status');
     if(taEl) { taEl.innerText = db.timeAware ? '开启' : '关闭'; taEl.style.color = db.timeAware ? 'var(--wechat-green)' : '#999'; }
+    const notifyEl = document.getElementById('notify-status');
+    if(notifyEl) { notifyEl.innerText = db.notifyOn ? '开启' : '关闭'; notifyEl.style.color = db.notifyOn ? 'var(--wechat-green)' : '#999'; }
 
     document.getElementById('contacts-list').innerHTML = db.c.map(i => `<div class="cell" onclick="openCharEdit(${i.id})"><img src="${i.a}" class="avatar"><div>${i.n}</div></div>`).join('');
 
@@ -224,7 +231,73 @@ function render() {
     }).join('');
 }
 
-// ✅ 修复：补全完全缺失的 startChat 函数
+// --- 核心：AI 随机生成多角色朋友圈 ---
+async function generateAIMoments() {
+    if(!db.api.u || !db.api.k) { alert("请先在'我'界面配置 API 接口和密钥"); return; }
+    if(db.c.length === 0) { alert("请先添加至少一个角色"); return; }
+
+    const extra = document.getElementById('nav-extra');
+    const originalContent = extra.innerHTML;
+    extra.innerHTML = `<span style="font-size:12px;color:#999;">生成中...</span>`;
+
+    // 随机决定生成几条 (1-3)
+    const count = Math.min(db.c.length, Math.floor(Math.random() * 3) + 1);
+    // 随机选取不重复的角色
+    const shuffled = [...db.c].sort(() => 0.5 - Math.random());
+    const selectedChars = shuffled.slice(0, count);
+
+    for (const char of selectedChars) {
+        const history = db.m[char.id] || [];
+        const lastChat = history.slice(-10).map(h => `${h.r==='user'?'用户':'角色'}:${h.c}`).join('\n');
+        
+        try {
+            const base = db.api.u.replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '');
+            const res = await fetch(`${base}/chat/completions`, {
+                method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${db.api.k}`},
+                body:JSON.stringify({ 
+                    model: db.api.model || "gpt-3.5-turbo", 
+                    messages:[
+                        {
+                            role:"system",
+                            content: `你正在扮演角色 ${char.n}。你的性格设定是：${char.p}。\n请为该角色写一条微信朋友圈动态。
+                            要求：
+                            1. 必须符合人设。
+                            2. 语气要像真实生活动态（分享心情、吐槽、美景等）。
+                            3. 如果提供了聊天记录，请尝试结合最近聊天的内容（比如聊到了某个话题或约定）。
+                            4. 如果你觉得适合配图，请在文末另起一行加上 [图片描述: xxx]。
+                            5. 输出格式：直接输出动态正文，不要包含角色名字。`
+                        },
+                        { role:"user", content: lastChat ? `最近聊天背景：\n${lastChat}` : "暂无最近聊天，请根据人设自由发挥。" }
+                    ] 
+                })
+            });
+            const data = await res.json();
+            let text = data.choices[0].message.content.trim();
+            
+            // 提取图片描述并尝试生成随机图（这里暂用占位图演示）
+            let img = "";
+            const imgMatch = text.match(/\[图片描述:?\s*(.*?)\]/);
+            if(imgMatch) {
+                text = text.replace(imgMatch[0], '').trim();
+                // 使用关键词生成一个随机风景/生活图
+                img = `https://source.unsplash.com/featured/800x600?${encodeURIComponent(imgMatch[1] || 'life')}`;
+            }
+
+            db.mo.unshift({
+                uid: char.id,
+                t: text,
+                img: img,
+                comments: []
+            });
+        } catch(e) {
+            console.error("生成朋友圈失败", e);
+        }
+    }
+    
+    extra.innerHTML = originalContent;
+    commit();
+}
+
 function startChat(id) {
     curChatId = id;
     isSimMode = false;
@@ -238,7 +311,6 @@ function startChat(id) {
     updateSimUI();
 }
 
-// 核心功能：4.空发送读取 API | 15.API 报错详情
 function showTyping(char) {
     const area = document.getElementById('chat-area');
     if(!area) return;
@@ -264,43 +336,46 @@ async function fetchAI(isAuto = false) {
     const activeWI = db.w.filter(i => (i.bind==='all' || i.bind==tid) && (i.isAlways || (i.k && last.includes(i.k)))).map(i=>i.v).join('\n');
 
     if(curChatId == tid) showTyping(char);
-
-    // 新增：提取判断好的时间上下文逻辑
     const timeCtx = db.timeAware ? getTimeContext(tid) : "";
 
     try {
         const base = db.api.u.replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '');
-        const endpoint = `${base}/chat/completions`;
-        const res = await fetch(endpoint, {
+        const res = await fetch(`${base}/chat/completions`, {
             method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${db.api.k}`},
             body:JSON.stringify({ 
                 model: db.api.model || "gpt-3.5-turbo", 
                 messages:[
                     {
                         role:"system",
-                        // 把获取到的时间感知拼接到设定中，如果开启就加进去，不开启就为空
-                        content:`你正在扮演${char.n}，通过手机微信和用户聊天。性格设定:${char.p}\n${timeCtx ? timeCtx + '\n' : ''}规则:${activeWI}\n\n【重要回复格式要求】每次回复必须拆成2~4条简短消息，每条不超过30个字，每条单独一行，像真实发微信一样自然分段，禁止长篇大论。`
+                        content:`你正在扮演${char.n}，通过手机微信和用户聊天。性格设定:${char.p}\n${timeCtx ? timeCtx + '\n' : ''}规则:${activeWI}\n\n【重要回复格式要求】每次回复必须拆成2~4条简短消息，每条不超过30个字，每条单独一行，像真实发微信一样自然分段。`
                     }, 
                     ...history.slice(-10).map(h=>({role:h.r==='user'?'user':'assistant',content:h.c}))
                 ] 
             })
         });
         const data = await res.json();
-        if(data.error) throw new Error(data.error.message || "接口返回错误");
         const full = data.choices[0].message.content;
-        // 按换行拆分，过滤空行，每段作为一条消息
         const parts = full.split('\n').map(s=>s.trim()).filter(s=>s.length>0);
+        
         parts.forEach(p => db.m[tid].push({ r:'ai', c:p, t:Date.now() }));
         removeTyping();
+
+        if (db.notifyOn && "Notification" in window && Notification.permission === "granted") {
+            if (document.hidden || curChatId != tid) {
+                let notifyText = parts.join(' ');
+                if(notifyText.includes('http')) notifyText = '[图片消息]';
+                new Notification(char.n, { body: notifyText, icon: char.a });
+            }
+        }
+
         commit(); if(curChatId==tid) renderChat();
         if(isAuto) resetTimer(tid);
     } catch(e) {
         removeTyping();
-        alert("API 错误详情：\n" + e.message);
+        console.error(e);
     }
 }
 
-// 5. 模拟模式标识
 function toggleSimMode() { isSimMode = !isSimMode; updateSimUI(); }
 function updateSimUI() {
     const btn = document.getElementById('sim-btn');
@@ -308,7 +383,7 @@ function updateSimUI() {
     const char = db.c.find(x=>x.id==curChatId);
     if(isSimMode) {
         btn.style.backgroundImage = `url(${char.a})`; btn.style.border = '2px solid orange';
-        input.placeholder = `[用户模拟角色 ${char.n} 发消息]`;
+        input.placeholder = `[模拟 ${char.n} 发消息]`;
     } else {
         btn.style.backgroundImage = `url(${db.u.a})`; btn.style.border = '1.5px solid #ccc';
         input.placeholder = "输入消息...";
@@ -333,7 +408,6 @@ function renderChat() {
     area.scrollTop = area.scrollHeight;
 }
 
-// 7. 世界书管理
 function openWorldBook() {
     showModal('世界书管理', commit, `<button onclick="db.w.push({k:'',v:'',isAlways:true,bind:'all'});renderWL();" style="width:100%;padding:10px;">+ 添加新规则</button><div id="wl"></div>`);
     renderWL();
@@ -343,15 +417,14 @@ function renderWL() {
     document.getElementById('wl').innerHTML = db.w.map((it, i) => `
         <div style="background:#f4f4f4;margin:10px;padding:10px;border-radius:6px;border:0.5px solid #ddd;">
             <select onchange="db.w[${i}].bind=this.value" class="input-item">${opts(it.bind)}</select>
-            <input class="input-item" placeholder="关键词 " value="${it.k}" oninput="db.w[${i}].k=this.value">
-            <textarea class="input-item" placeholder="描述 " oninput="db.w[${i}].v=this.value" style="height:60px;">${it.v}</textarea>
-            <label><input type="checkbox" ${it.isAlways?'checked':''} onchange="db.w[${i}].isAlways=this.checked"> 常驻生效 </label>
-            <p onclick="db.w.splice(${i},1);renderWL();" style="color:red;text-align:right;cursor:pointer;">删除 </p>
+            <input class="input-item" placeholder="关键词" value="${it.k}" oninput="db.w[${i}].k=this.value">
+            <textarea class="input-item" placeholder="描述" oninput="db.w[${i}].v=this.value" style="height:60px;">${it.v}</textarea>
+            <label><input type="checkbox" ${it.isAlways?'checked':''} onchange="db.w[${i}].isAlways=this.checked"> 常驻生效</label>
+            <p onclick="db.w.splice(${i},1);renderWL();" style="color:red;text-align:right;cursor:pointer;">删除</p>
         </div>
     `).join('');
 }
 
-// 11. 删除角色无遗漏 | 12. 添加角色保存成功
 function openCharEdit(id = null) {
     const isE = id !== null;
     const char = isE ? db.c.find(x=>x.id===id) : { n:'', a:'', p:'', bg:'', css:'', autoOn:false, minT:10, maxT:60 };
@@ -365,22 +438,17 @@ function openCharEdit(id = null) {
         if(isE) db.c = db.c.map(x=>x.id===id?data:x); else { db.c.push(data); db.m[data.id]=[]; }
         commit(); if(data.autoOn) resetTimer(data.id);
     }, `
-        <div class="input-group"><span class="input-label">昵称 </span><input id="i-n" class="input-item" value="${char.n}"></div>
-        <div class="input-group"><span class="input-label">头像 URL </span><input id="i-a" class="input-item" value="${char.a}"></div>
-        <div class="input-group"><span class="input-label">设定 </span><textarea id="i-p" class="input-item" style="height:60px">${char.p}</textarea></div>
+        <div class="input-group"><span class="input-label">昵称</span><input id="i-n" class="input-item" value="${char.n}"></div>
+        <div class="input-group"><span class="input-label">头像 URL</span><input id="i-a" class="input-item" value="${char.a}"></div>
+        <div class="input-group"><span class="input-label">设定</span><textarea id="i-p" class="input-item" style="height:60px">${char.p}</textarea></div>
         <div class="input-group"><span class="input-label">背景图 URL</span><input id="i-bg" class="input-item" value="${char.bg||''}"></div>
-        <div class="input-group"><span class="input-label">专属气泡 CSS </span><input id="i-css" class="input-item" value="${char.css||''}"></div>
-        <div class="input-group"><span class="input-label">主动消息 </span><label><input type="checkbox" id="i-auto" ${char.autoOn?'checked':''}> 开启</label> 随机范围(分): <input id="i-min" type="number" style="width:40px" value="${char.minT}">-<input id="i-max" type="number" style="width:40px" value="${char.maxT}"></div>
-        ${isE ? `<p onclick="deleteChar(${id})" style="color:red;text-align:center;padding:15px;cursor:pointer;">删除角色 </p>` : ''}
+        <div class="input-group"><span class="input-label">专属气泡 CSS</span><input id="i-css" class="input-item" value="${char.css||''}"></div>
+        <div class="input-group"><span class="input-label">主动消息</span><label><input type="checkbox" id="i-auto" ${char.autoOn?'checked':''}> 开启</label> 分钟: <input id="i-min" type="number" style="width:40px" value="${char.minT}">-<input id="i-max" type="number" style="width:40px" value="${char.maxT}"></div>
+        ${isE ? `<p onclick="deleteChar(${id})" style="color:red;text-align:center;padding:15px;cursor:pointer;">删除角色</p>` : ''}
     `);
 }
-function deleteChar(id) {
-    if(confirm('警告：删除角色将连带删除其所有聊天记录和朋友圈消息，确定要删除该好友吗？')) {
-        db.c=db.c.filter(x=>x.id!=id); delete db.m[id]; db.mo=db.mo.filter(m=>m.uid!=id); commit(); hideModal(); goBack();
-    }
-}
+function deleteChar(id) { if(confirm('确定删除吗？')) { db.c=db.c.filter(x=>x.id!=id); delete db.m[id]; db.mo=db.mo.filter(m=>m.uid!=id); commit(); hideModal(); goBack(); } }
 
-// 8. 用户设定全包含 | 12. 编辑用户成功
 function editMe() {
     showModal('编辑个人信息', () => {
         db.u.n = document.getElementById('me-n').value; db.u.a = document.getElementById('me-a').value;
@@ -388,56 +456,48 @@ function editMe() {
         db.u.css = document.getElementById('me-css').value; commit();
     }, `
         <div class="input-group"><span class="input-label">昵称</span><input id="me-n" class="input-item" value="${db.u.n}"></div>
-        <div class="input-group"><span class="input-label">头像 URL </span><input id="me-a" class="input-item" value="${db.u.a}"></div>
-        <div class="input-group"><span class="input-label">朋友圈封面 URL </span><input id="me-bg" class="input-item" value="${db.u.bg||''}"></div>
-        <div class="input-group"><span class="input-label">个人设定 </span><textarea id="me-p" class="input-item">${db.u.p||''}</textarea></div>
-        <div class="input-group"><span class="input-label">气泡 CSS (1)</span><input id="me-css" class="input-item" value="${db.u.css||''}"></div>
+        <div class="input-group"><span class="input-label">头像 URL</span><input id="me-a" class="input-item" value="${db.u.a}"></div>
+        <div class="input-group"><span class="input-label">朋友圈封面 URL</span><input id="me-bg" class="input-item" value="${db.u.bg||''}"></div>
+        <div class="input-group"><span class="input-label">个人设定</span><textarea id="me-p" class="input-item">${db.u.p||''}</textarea></div>
+        <div class="input-group"><span class="input-label">气泡 CSS</span><input id="me-css" class="input-item" value="${db.u.css||''}"></div>
     `);
 }
 
-// 9. 朋友圈功能全项
 function postMoment() {
     let opts = `<option value="me">我</option>`+db.c.map(c=>`<option value="${c.id}">${c.n}</option>`).join('');
     showModal('发布朋友圈', () => {
         db.mo.unshift({ uid:document.getElementById('mo-u').value, t:document.getElementById('mo-t').value, img:document.getElementById('mo-i').value, comments:[] });
         commit();
     }, `
-        <div class="input-group"><span class="input-label">选择角色 </span><select id="mo-u" class="input-item">${opts}</select></div>
-        <div class="input-group"><span class="input-label">正文内容 </span><textarea id="mo-t" class="input-item" style="height:80px"></textarea></div>
-        <div class="input-group"><span class="input-label">图片 URL </span><input id="mo-i" class="input-item"></div>
+        <div class="input-group"><span class="input-label">选择角色</span><select id="mo-u" class="input-item">${opts}</select></div>
+        <div class="input-group"><span class="input-label">正文内容</span><textarea id="mo-t" class="input-item" style="height:80px"></textarea></div>
+        <div class="input-group"><span class="input-label">图片 URL</span><input id="mo-i" class="input-item"></div>
     `);
 }
 
-// 朋友圈AI评论
 async function aiCommentMoment(idx) {
     if(!db.api.u || !db.api.k) { alert("请先配置API"); return; }
-    if(!db.c.length) { alert("请先添加角色"); return; }
     const moment = db.mo[idx];
-    // 随机选一个不是发布者的角色来评论
     const candidates = db.c.filter(c => String(c.id) !== String(moment.uid));
-    const char = candidates.length > 0 ? candidates[Math.floor(Math.random()*candidates.length)] : db.c[Math.floor(Math.random()*db.c.length)];
+    const char = candidates.length > 0 ? candidates[Math.floor(Math.random()*candidates.length)] : db.c[0];
     const author = moment.uid === 'me' ? db.u.n : (db.c.find(x=>x.id==moment.uid)||{n:'TA'}).n;
     try {
         const base = db.api.u.replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '');
         const res = await fetch(`${base}/chat/completions`, {
             method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${db.api.k}`},
-            body: JSON.stringify({ model: db.api.model||'gpt-3.5-turbo', messages:[
-                {role:'system', content:`你是${char.n}，性格:${char.p}。你在朋友圈看到${author}发了一条动态，用符合你性格的方式写一句简短评论，不超过20个字，只输出评论内容本身。`},
+            body: JSON.stringify({ model: db.api.model, messages:[
+                {role:'system', content:`你是${char.n}，性格:${char.p}。你在朋友圈看到${author}发了一条动态，请写一句简短评论，不超过20字。`},
                 {role:'user', content: moment.t || '[图片]'}
             ]})
         });
         const data = await res.json();
-        if(data.error) throw new Error(data.error.message);
         const comment = data.choices[0].message.content.trim();
         if(!moment.comments) moment.comments = [];
-        moment.comments.push({ n: char.n, a: char.a, t: comment });
+        moment.comments.push({ n: char.n, t: comment });
         commit();
-    } catch(e) {
-        alert('评论失败：' + e.message);
-    }
+    } catch(e) { alert(e.message); }
 }
 
-// 6. 表情包功能
 function openStickerManager() {
     showModal('表情包管理', commit, `<button onclick="addSticker()" style="width:100%;padding:10px;">+ 添加 URL 表情</button><div id="s-list"></div>`);
     renderSList();
@@ -450,7 +510,7 @@ function renderSList() {
     document.getElementById('s-list').innerHTML = db.s.map((it, i) => `
         <div class="cell" style="justify-content:space-between">
             <img src="${it.url}" style="width:40px;height:40px;object-fit:contain;">
-            <span>${it.desc}</span><span style="color:red" onclick="db.s.splice(${i},1);renderSList();">删除 </span>
+            <span>${it.desc}</span><span style="color:red" onclick="db.s.splice(${i},1);renderSList();">删除</span>
         </div>
     `).join('');
 }
@@ -464,53 +524,43 @@ function sendSticker(url) {
     toggleStickerPanel(); commit(); renderChat();
 }
 
-// 10/14. 配置导出导入
 function exportData() {
     const s = btoa(unescape(encodeURIComponent(JSON.stringify(db))));
-    showModal('配置导出', null, `<p style="font-size:11px;color:red;">请完整复制下方内容进行保存：</p><textarea class="input-item" style="height:300px;">${s}</textarea>`);
+    showModal('导出', null, `<textarea class="input-item" style="height:300px;">${s}</textarea>`);
 }
 function importData() {
-    showModal('配置导入', () => { try { db=JSON.parse(decodeURIComponent(escape(atob(document.getElementById('imp').value)))); commit(); alert('配置加载成功'); } catch(e){alert('无效代码');} }, `<textarea id="imp" class="input-item" placeholder="在此粘贴代码..." style="height:300px;"></textarea>`);
+    showModal('导入', () => { try { db=JSON.parse(decodeURIComponent(escape(atob(document.getElementById('imp').value)))); commit(); } catch(e){alert('无效代码');} }, `<textarea id="imp" class="input-item" style="height:300px;"></textarea>`);
 }
 
-// 时间感知
-function toggleTimeAware() {
-    db.timeAware = !db.timeAware;
+function toggleTimeAware() { db.timeAware = !db.timeAware; commit(); }
+async function toggleNotify() {
+    if (!db.notifyOn) {
+        if (!("Notification" in window)) return;
+        if (Notification.permission !== "granted") await Notification.requestPermission();
+        db.notifyOn = true;
+    } else db.notifyOn = false;
     commit();
 }
-function getTimeContext(chatId) {
-    const now = new Date();
-    const weeks = ['周日','周一','周二','周三','周四','周五','周六'];
-    const dateStr = `${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日 ${weeks[now.getDay()]} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-    const hour = now.getHours();
-    const period = hour < 6 ? '深夜' : hour < 9 ? '清晨' : hour < 12 ? '上午' : hour < 14 ? '中午' : hour < 18 ? '下午' : hour < 22 ? '晚上' : '深夜';
-    // 计算距上次对话过了多久
-    const msgs = db.m[chatId] || [];
-    let lastGapStr = '';
-    if(msgs.length > 0) {
-        const lastT = msgs[msgs.length-1].t;
-        if(lastT) {
-            const diffMs = now - lastT;
-            const diffMin = Math.floor(diffMs/60000);
-            if(diffMin < 1) lastGapStr = '刚刚发过消息';
-            else if(diffMin < 60) lastGapStr = `距上条消息已过去约${diffMin}分钟`;
-            else if(diffMin < 1440) lastGapStr = `距上条消息已过去约${Math.floor(diffMin/60)}小时`;
-            else lastGapStr = `距上条消息已过去约${Math.floor(diffMin/1440)}天`;
-        }
-    }
-    return `【当前时间】${dateStr}，现在是${period}。${lastGapStr ? lastGapStr + '。' : ''}请根据时间和时间间隔自然地调整你的状态和说话方式。`;
-}
 
-// 基础辅助逻辑
-// ✅ 修复：showTab 使用传入的元素引用而非 event.currentTarget（部分环境下 event 作用域丢失）
 function showTab(t, el) {
     document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
     document.getElementById('p-'+t).classList.add('active');
     document.querySelectorAll('.tab-item').forEach(i=>i.classList.remove('active'));
     el.classList.add('active');
-    document.getElementById('nav-title').innerText={msg:'信息', contacts:'好友', moments:'朋友圈', me:'我'}[t];
+    
+    const navTitle = document.getElementById('nav-title');
+    const navExtra = document.getElementById('nav-extra');
+    navTitle.innerText = {msg:'信息', contacts:'好友', moments:'朋友圈', me:'我'}[t];
+    
+    // 朋友圈界面显示 AI 生成按钮
+    if(t === 'moments') {
+        navExtra.innerHTML = `<div class="nav-action" onclick="generateAIMoments()">✨ 自动生成</div>`;
+    } else {
+        navExtra.innerHTML = '';
+    }
     render();
 }
+
 function goBack() { document.getElementById('chat-room').style.display='none'; curChatId=null; render(); }
 function showModal(t, ok, b) {
     document.getElementById('modal-head').innerText=t; document.getElementById('modal-body').innerHTML=b;
@@ -519,41 +569,32 @@ function showModal(t, ok, b) {
 }
 function hideModal() { document.getElementById('modal-box').style.display='none'; }
 function manageMsg(i) {
-    showModal('双击编辑消息', () => { db.m[curChatId][i].c=document.getElementById('e-m').value; commit(); renderChat(); }, `<textarea id="e-m" class="input-item" style="height:150px">${db.m[curChatId][i].c}</textarea><p onclick="db.m[curChatId].splice(${i},1);hideModal();commit();renderChat();" style="color:red;padding:10px;text-align:center;cursor:pointer;">删除此消息</p>`);
+    showModal('编辑消息', () => { db.m[curChatId][i].c=document.getElementById('e-m').value; commit(); renderChat(); }, `<textarea id="e-m" class="input-item" style="height:150px">${db.m[curChatId][i].c}</textarea><p onclick="db.m[curChatId].splice(${i},1);hideModal();commit();renderChat();" style="color:red;padding:10px;text-align:center;cursor:pointer;">删除</p>`);
 }
 function resetTimer(cid) { if(timers[cid]) clearTimeout(timers[cid]); const c=db.c.find(x=>x.id==cid); if(!c||!c.autoOn)return; const ms=(Math.floor(Math.random()*(c.maxT-c.minT+1))+c.minT)*60000; timers[cid]=setTimeout(()=>fetchAI(cid), ms); }
+
 async function fetchModels() {
-    const url = document.getElementById('api-url').value.trim();
-    const key = document.getElementById('api-key').value.trim();
-    const tip = document.getElementById('fetch-model-tip');
+    const url = document.getElementById('api-url').value;
+    const key = document.getElementById('api-key').value;
     const btn = document.getElementById('fetch-model-btn');
-    if(!url || !key) { tip.style.color='red'; tip.innerText='请先填写 Endpoint 和 Key'; return; }
-    btn.innerText = '拉取中...'; btn.disabled = true; tip.innerText = '';
+    btn.innerText = '...';
     try {
         const base = url.replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '');
         const res = await fetch(`${base}/models`, { headers: { 'Authorization': `Bearer ${key}` } });
         const data = await res.json();
-        if(!res.ok) throw new Error(data.error?.message || '请求失败');
-        const models = (data.data || []).map(m => m.id).sort();
-        if(!models.length) throw new Error('未获取到任何模型');
+        const models = (data.data || []).map(m => m.id);
         const sel = document.getElementById('api-model');
-        const cur = db.api.model || '';
-        sel.innerHTML = models.map(m => `<option value="${m}" ${m===cur?'selected':''}>${m}</option>`).join('');
+        sel.innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
         db.api.models = models;
-        if(!cur || !models.includes(cur)) { db.api.model = models[0]; sel.value = models[0]; }
-        tip.style.color = 'green'; tip.innerText = `✓ 已加载 ${models.length} 个模型`;
+        if(models.length) db.api.model = models[0];
         commit();
-    } catch(e) {
-        tip.style.color = 'red'; tip.innerText = '拉取失败：' + e.message;
-    } finally {
-        btn.innerText = '拉取'; btn.disabled = false;
-    }
+    } catch(e) { alert('拉取失败'); } finally { btn.innerText = '拉取'; }
 }
+
 function saveAPI() {
     db.api.u = document.getElementById('api-url').value;
     db.api.k = document.getElementById('api-key').value;
-    const sel = document.getElementById('api-model');
-    if(sel.value) db.api.model = sel.value;
+    db.api.model = document.getElementById('api-model').value;
     commit();
 }
 function editGlobalCSS() { showModal('全局 CSS', () => { db.g_css=document.getElementById('g-v').value; commit(); }, `<textarea id="g-v" class="input-item" style="height:300px;">${db.g_css}</textarea>`); }
