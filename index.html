@@ -222,7 +222,9 @@ async function fetchAI(isAuto = false) {
     const activeWI = db.w.filter(i => (i.bind==='all' || i.bind==tid) && (i.isAlways || (i.k && last.includes(i.k)))).map(i=>i.v).join('\n');
     
     try {
-        const res = await fetch(db.api.u, {
+        const base = db.api.u.replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '');
+        const endpoint = `${base}/chat/completions`;
+        const res = await fetch(endpoint, {
             method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${db.api.k}`},
             body:JSON.stringify({ model: db.api.model || "gpt-3.5-turbo", messages:[{role:"system",content:`演${char.n}。性格:${char.p}\n规则:${activeWI}`}, ...history.slice(-10).map(h=>({role:h.r==='user'?'user':'assistant',content:h.c}))] })
         });
