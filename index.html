@@ -99,6 +99,13 @@
                 <span class="api-hint">API 接口设置</span>
                 <input class="api-field" id="api-url" placeholder="Endpoint: https://api..." oninput="saveAPI()">
                 <input class="api-field" id="api-key" type="password" placeholder="Key: sk-..." oninput="saveAPI()">
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <select class="api-field" id="api-model" onchange="saveAPI()" style="flex:1; margin-bottom:0;">
+                        <option value="">— 请先拉取模型 —</option>
+                    </select>
+                    <button onclick="fetchModels()" id="fetch-model-btn" style="flex-shrink:0; height:34px; padding:0 10px; border:none; background:var(--wechat-green); color:#fff; border-radius:4px; font-size:13px; cursor:pointer;">拉取</button>
+                </div>
+                <div id="fetch-model-tip" style="font-size:11px; color:#888; margin-top:4px;"></div>
             </div>
         </div>
     </div>
@@ -144,7 +151,7 @@
 const DB_KEY = "ST_V66_FINAL";
 let db = JSON.parse(localStorage.getItem(DB_KEY)) || {
     u: { n:'用户', a:'', p:'', bg:'', css:'' },
-    c: [], m: {}, mo: [], w: [], s: [], api: { u:'', k:'' }, g_css: ''
+    c: [], m: {}, mo: [], w: [], s: [], api: { u:'', k:'', model:'gpt-3.5-turbo' }, g_css: ''
 };
 
 let curChatId = null;
@@ -169,6 +176,12 @@ function render() {
     document.getElementById('mo-cover').style.backgroundImage = db.u.bg ? `url(${db.u.bg})` : 'none';
     document.getElementById('api-url').value = db.api.u || '';
     document.getElementById('api-key').value = db.api.k || '';
+    const sel = document.getElementById('api-model');
+    if(db.api.models && db.api.models.length) {
+        sel.innerHTML = db.api.models.map(m => `<option value="${m}" ${m===db.api.model?'selected':''}>${m}</option>`).join('');
+    } else if(db.api.model) {
+        sel.innerHTML = `<option value="${db.api.model}">${db.api.model}</option>`;
+    }
     
     document.getElementById('p-msg').innerHTML = db.c.map(i => {
         const h = db.m[i.id] || [];
@@ -211,7 +224,7 @@ async function fetchAI(isAuto = false) {
     try {
         const res = await fetch(db.api.u, {
             method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${db.api.k}`},
-            body:JSON.stringify({ model:"gpt-3.5-turbo", messages:[{role:"system",content:`演${char.n}。性格:${char.p}\n规则:${activeWI}`}, ...history.slice(-10).map(h=>({role:h.r==='user'?'user':'assistant',content:h.c}))] })
+            body:JSON.stringify({ model: db.api.model || "gpt-3.5-turbo", messages:[{role:"system",content:`演${char.n}。性格:${char.p}\n规则:${activeWI}`}, ...history.slice(-10).map(h=>({role:h.r==='user'?'user':'assistant',content:h.c}))] })
         });
         const data = await res.json();
         if(data.error) throw new Error(data.error.message || "接口返回错误");
@@ -388,7 +401,40 @@ function manageMsg(i) {
     showModal('双击编辑消息', () => { db.m[curChatId][i].c=document.getElementById('e-m').value; commit(); renderChat(); }, `<textarea id="e-m" class="input-item" style="height:150px">${db.m[curChatId][i].c}</textarea><p onclick="db.m[curChatId].splice(${i},1);hideModal();commit();renderChat();" style="color:red;padding:10px;text-align:center;cursor:pointer;">删除此消息</p>`);
 }
 function resetTimer(cid) { if(timers[cid]) clearTimeout(timers[cid]); const c=db.c.find(x=>x.id==cid); if(!c||!c.autoOn)return; const ms=(Math.floor(Math.random()*(c.maxT-c.minT+1))+c.minT)*60000; timers[cid]=setTimeout(()=>fetchAI(cid), ms); }
-function saveAPI() { db.api.u=document.getElementById('api-url').value; db.api.k=document.getElementById('api-key').value; commit(); }
+async function fetchModels() {
+    const url = document.getElementById('api-url').value.trim();
+    const key = document.getElementById('api-key').value.trim();
+    const tip = document.getElementById('fetch-model-tip');
+    const btn = document.getElementById('fetch-model-btn');
+    if(!url || !key) { tip.style.color='red'; tip.innerText='请先填写 Endpoint 和 Key'; return; }
+    btn.innerText = '拉取中...'; btn.disabled = true; tip.innerText = '';
+    try {
+        const base = url.replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '');
+        const res = await fetch(`${base}/models`, { headers: { 'Authorization': `Bearer ${key}` } });
+        const data = await res.json();
+        if(!res.ok) throw new Error(data.error?.message || '请求失败');
+        const models = (data.data || []).map(m => m.id).sort();
+        if(!models.length) throw new Error('未获取到任何模型');
+        const sel = document.getElementById('api-model');
+        const cur = db.api.model || '';
+        sel.innerHTML = models.map(m => `<option value="${m}" ${m===cur?'selected':''}>${m}</option>`).join('');
+        db.api.models = models;
+        if(!cur || !models.includes(cur)) { db.api.model = models[0]; sel.value = models[0]; }
+        tip.style.color = 'green'; tip.innerText = `✓ 已加载 ${models.length} 个模型`;
+        commit();
+    } catch(e) {
+        tip.style.color = 'red'; tip.innerText = '拉取失败：' + e.message;
+    } finally {
+        btn.innerText = '拉取'; btn.disabled = false;
+    }
+}
+function saveAPI() {
+    db.api.u = document.getElementById('api-url').value;
+    db.api.k = document.getElementById('api-key').value;
+    const sel = document.getElementById('api-model');
+    if(sel.value) db.api.model = sel.value;
+    commit();
+}
 function editGlobalCSS() { showModal('全局 CSS', () => { db.g_css=document.getElementById('g-v').value; commit(); }, `<textarea id="g-v" class="input-item" style="height:300px;">${db.g_css}</textarea>`); }
 
 commit();
