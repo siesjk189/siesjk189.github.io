@@ -92,6 +92,7 @@
             <div class="cell" onclick="openStickerManager()">♚表情包管理</div>
             <div class="cell" onclick="openWorldBook()">♛世界书管理</div>
             <div class="cell" onclick="editGlobalCSS()">♞全局 UI CSS </div>
+            <div class="cell" onclick="toggleTimeAware()" id="time-aware-cell">⏰ 时间感知：<span id="time-aware-status" style="color:#999;">关闭</span></div>
             <div class="cell" onclick="exportData()" style="color:var(--wechat-green)">💾 导出/保存当前配置 </div>
             <div class="cell" onclick="importData()">📂 导入配置数据 </div>
             
@@ -142,16 +143,13 @@
         <div id="modal-body" style="flex:1; overflow-y:auto;"></div>
     </div>
 
-</div><!-- end phone-shell -->
-</div><!-- end phone-wrapper -->
-
-<style id="RUNTIME_CSS"></style>
+</div></div><style id="RUNTIME_CSS"></style>
 
 <script>
 const DB_KEY = "ST_V66_FINAL";
 let db = JSON.parse(localStorage.getItem(DB_KEY)) || {
     u: { n:'用户', a:'', p:'', bg:'', css:'' },
-    c: [], m: {}, mo: [], w: [], s: [], api: { u:'', k:'', model:'gpt-3.5-turbo' }, g_css: ''
+    c: [], m: {}, mo: [], w: [], s: [], api: { u:'', k:'', model:'gpt-3.5-turbo' }, g_css: '', timeAware: false
 };
 
 let curChatId = null;
@@ -164,6 +162,17 @@ function applyCSS() {
     db.c.forEach(c => { if(c.css) css += `html body #phone-shell .char-msg-${c.id} .bubble { ${c.css} }\n`; });
     if(db.u.css) css += `html body #phone-shell .msg.user .bubble { ${db.u.css} }\n`;
     document.getElementById('RUNTIME_CSS').innerHTML = css;
+}
+
+// 键盘弹出/收起自动适配，消除黑色区域
+if(window.visualViewport) {
+    window.visualViewport.addEventListener('resize', () => {
+        const shell = document.getElementById('phone-shell');
+        shell.style.height = window.visualViewport.height + 'px';
+        // 键盘收起后滚动聊天区域到底部
+        const area = document.getElementById('chat-area');
+        if(area) area.scrollTop = area.scrollHeight;
+    });
 }
 
 const isImg = (url) => (typeof url === 'string' && (url.match(/\.(jpeg|jpg|gif|png|webp|svg|ico)$/i) != null || url.startsWith('data:image')));
@@ -189,11 +198,29 @@ function render() {
         return `<div class="cell" onclick="startChat(${i.id})"><img src="${i.a}" class="avatar"><div><b>${i.n}</b><p style="font-size:12px;color:#888;">${isImg(last)?'[表情]':last.substring(0,20)}</p></div></div>`;
     }).join('');
 
+    const taEl = document.getElementById('time-aware-status');
+    if(taEl) { taEl.innerText = db.timeAware ? '开启' : '关闭'; taEl.style.color = db.timeAware ? 'var(--wechat-green)' : '#999'; }
+
     document.getElementById('contacts-list').innerHTML = db.c.map(i => `<div class="cell" onclick="openCharEdit(${i.id})"><img src="${i.a}" class="avatar"><div>${i.n}</div></div>`).join('');
 
     document.getElementById('moments-list').innerHTML = db.mo.map((m, idx) => {
         const author = (m.uid==='me') ? db.u : (db.c.find(x=>x.id==m.uid) || {n:'未知', a:''});
-        return `<div class="cell" style="align-items:flex-start;padding:15px;background:#fff;"><img src="${author.a}" class="avatar"><div><b style="color:var(--link-color);">${author.n}</b><p style="margin-top:5px;white-space:pre-wrap;">${m.t}</p>${m.img?`<img src="${m.img}" style="max-width:200px;margin-top:8px;border-radius:4px;">`:''}<div style="color:red;font-size:11px;margin-top:10px;cursor:pointer;" onclick="db.mo.splice(${idx},1);commit();">删除</div></div></div>`;
+        const comments = (m.comments||[]).map(c => `<div style="font-size:12px;color:#333;margin-top:4px;"><b style="color:var(--link-color);">${c.n}：</b>${c.t}</div>`).join('');
+        return `<div class="cell" style="align-items:flex-start;padding:15px;background:#fff;flex-direction:column;">
+            <div style="display:flex;align-items:flex-start;width:100%;">
+                <img src="${author.a}" class="avatar">
+                <div style="flex:1;">
+                    <b style="color:var(--link-color);">${author.n}</b>
+                    <p style="margin-top:5px;white-space:pre-wrap;">${m.t}</p>
+                    ${m.img?`<img src="${m.img}" style="max-width:200px;margin-top:8px;border-radius:4px;">`: ''}
+                    <div style="display:flex;gap:12px;margin-top:10px;">
+                        <span style="color:red;font-size:11px;cursor:pointer;" onclick="db.mo.splice(${idx},1);commit();">删除</span>
+                        <span style="color:var(--link-color);font-size:11px;cursor:pointer;" onclick="aiCommentMoment(${idx})">💬 AI回复</span>
+                    </div>
+                </div>
+            </div>
+            ${comments ? `<div style="background:#f4f4f4;border-radius:4px;padding:8px;margin-top:8px;width:100%;">${comments}</div>` : ''}
+        </div>`;
     }).join('');
 }
 
@@ -238,12 +265,25 @@ async function fetchAI(isAuto = false) {
 
     if(curChatId == tid) showTyping(char);
 
+    // 新增：提取判断好的时间上下文逻辑
+    const timeCtx = db.timeAware ? getTimeContext(tid) : "";
+
     try {
         const base = db.api.u.replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '');
         const endpoint = `${base}/chat/completions`;
         const res = await fetch(endpoint, {
             method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${db.api.k}`},
-            body:JSON.stringify({ model: db.api.model || "gpt-3.5-turbo", messages:[{role:"system",content:`你正在扮演${char.n}，通过手机微信和用户聊天。性格设定:${char.p}\n规则:${activeWI}\n\n【重要回复格式要求】每次回复必须拆成2~4条简短消息，每条不超过30个字，每条单独一行，像真实发微信一样自然分段，禁止长篇大论。`}, ...history.slice(-10).map(h=>({role:h.r==='user'?'user':'assistant',content:h.c}))] })
+            body:JSON.stringify({ 
+                model: db.api.model || "gpt-3.5-turbo", 
+                messages:[
+                    {
+                        role:"system",
+                        // 把获取到的时间感知拼接到设定中，如果开启就加进去，不开启就为空
+                        content:`你正在扮演${char.n}，通过手机微信和用户聊天。性格设定:${char.p}\n${timeCtx ? timeCtx + '\n' : ''}规则:${activeWI}\n\n【重要回复格式要求】每次回复必须拆成2~4条简短消息，每条不超过30个字，每条单独一行，像真实发微信一样自然分段，禁止长篇大论。`
+                    }, 
+                    ...history.slice(-10).map(h=>({role:h.r==='user'?'user':'assistant',content:h.c}))
+                ] 
+            })
         });
         const data = await res.json();
         if(data.error) throw new Error(data.error.message || "接口返回错误");
@@ -359,13 +399,42 @@ function editMe() {
 function postMoment() {
     let opts = `<option value="me">我</option>`+db.c.map(c=>`<option value="${c.id}">${c.n}</option>`).join('');
     showModal('发布朋友圈', () => {
-        db.mo.unshift({ uid:document.getElementById('mo-u').value, t:document.getElementById('mo-t').value, img:document.getElementById('mo-i').value });
+        db.mo.unshift({ uid:document.getElementById('mo-u').value, t:document.getElementById('mo-t').value, img:document.getElementById('mo-i').value, comments:[] });
         commit();
     }, `
         <div class="input-group"><span class="input-label">选择角色 </span><select id="mo-u" class="input-item">${opts}</select></div>
         <div class="input-group"><span class="input-label">正文内容 </span><textarea id="mo-t" class="input-item" style="height:80px"></textarea></div>
         <div class="input-group"><span class="input-label">图片 URL </span><input id="mo-i" class="input-item"></div>
     `);
+}
+
+// 朋友圈AI评论
+async function aiCommentMoment(idx) {
+    if(!db.api.u || !db.api.k) { alert("请先配置API"); return; }
+    if(!db.c.length) { alert("请先添加角色"); return; }
+    const moment = db.mo[idx];
+    // 随机选一个不是发布者的角色来评论
+    const candidates = db.c.filter(c => String(c.id) !== String(moment.uid));
+    const char = candidates.length > 0 ? candidates[Math.floor(Math.random()*candidates.length)] : db.c[Math.floor(Math.random()*db.c.length)];
+    const author = moment.uid === 'me' ? db.u.n : (db.c.find(x=>x.id==moment.uid)||{n:'TA'}).n;
+    try {
+        const base = db.api.u.replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '');
+        const res = await fetch(`${base}/chat/completions`, {
+            method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${db.api.k}`},
+            body: JSON.stringify({ model: db.api.model||'gpt-3.5-turbo', messages:[
+                {role:'system', content:`你是${char.n}，性格:${char.p}。你在朋友圈看到${author}发了一条动态，用符合你性格的方式写一句简短评论，不超过20个字，只输出评论内容本身。`},
+                {role:'user', content: moment.t || '[图片]'}
+            ]})
+        });
+        const data = await res.json();
+        if(data.error) throw new Error(data.error.message);
+        const comment = data.choices[0].message.content.trim();
+        if(!moment.comments) moment.comments = [];
+        moment.comments.push({ n: char.n, a: char.a, t: comment });
+        commit();
+    } catch(e) {
+        alert('评论失败：' + e.message);
+    }
 }
 
 // 6. 表情包功能
@@ -402,6 +471,34 @@ function exportData() {
 }
 function importData() {
     showModal('配置导入', () => { try { db=JSON.parse(decodeURIComponent(escape(atob(document.getElementById('imp').value)))); commit(); alert('配置加载成功'); } catch(e){alert('无效代码');} }, `<textarea id="imp" class="input-item" placeholder="在此粘贴代码..." style="height:300px;"></textarea>`);
+}
+
+// 时间感知
+function toggleTimeAware() {
+    db.timeAware = !db.timeAware;
+    commit();
+}
+function getTimeContext(chatId) {
+    const now = new Date();
+    const weeks = ['周日','周一','周二','周三','周四','周五','周六'];
+    const dateStr = `${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日 ${weeks[now.getDay()]} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+    const hour = now.getHours();
+    const period = hour < 6 ? '深夜' : hour < 9 ? '清晨' : hour < 12 ? '上午' : hour < 14 ? '中午' : hour < 18 ? '下午' : hour < 22 ? '晚上' : '深夜';
+    // 计算距上次对话过了多久
+    const msgs = db.m[chatId] || [];
+    let lastGapStr = '';
+    if(msgs.length > 0) {
+        const lastT = msgs[msgs.length-1].t;
+        if(lastT) {
+            const diffMs = now - lastT;
+            const diffMin = Math.floor(diffMs/60000);
+            if(diffMin < 1) lastGapStr = '刚刚发过消息';
+            else if(diffMin < 60) lastGapStr = `距上条消息已过去约${diffMin}分钟`;
+            else if(diffMin < 1440) lastGapStr = `距上条消息已过去约${Math.floor(diffMin/60)}小时`;
+            else lastGapStr = `距上条消息已过去约${Math.floor(diffMin/1440)}天`;
+        }
+    }
+    return `【当前时间】${dateStr}，现在是${period}。${lastGapStr ? lastGapStr + '。' : ''}请根据时间和时间间隔自然地调整你的状态和说话方式。`;
 }
 
 // 基础辅助逻辑
