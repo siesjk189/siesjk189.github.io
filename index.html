@@ -243,7 +243,7 @@ async function fetchAI(isAuto = false) {
         const endpoint = `${base}/chat/completions`;
         const res = await fetch(endpoint, {
             method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${db.api.k}`},
-            body:JSON.stringify({ model: db.api.model || "gpt-3.5-turbo", messages:[{role:"system",content:`演${char.n}。性格:${char.p}\n规则:${activeWI}`}, ...history.slice(-10).map(h=>({role:h.r==='user'?'user':'assistant',content:h.c}))] })
+            body:JSON.stringify({ model: db.api.model || "gpt-3.5-turbo", messages:[{role:"system",content:`你正在扮演${char.n}，通过手机微信和用户聊天。性格设定:${char.p}\n规则:${activeWI}\n\n【重要回复格式要求】每次回复必须拆成2~4条简短消息，每条不超过30个字，每条单独一行，像真实发微信一样自然分段，禁止长篇大论。`}, ...history.slice(-10).map(h=>({role:h.r==='user'?'user':'assistant',content:h.c}))] })
         });
         const data = await res.json();
         if(data.error) throw new Error(data.error.message || "接口返回错误");
