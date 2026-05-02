@@ -7,10 +7,8 @@
     <link rel="icon" type="image/png" sizes="192x192" href="https://siesjk189.github.io/icon.png">
     
     <meta name="apple-mobile-web-app-title" content="三分糖小手机">
-    
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
-    
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
     <style>
@@ -32,7 +30,6 @@
         .nav-title { font-weight: bold; font-size: 16px; }
         .back-btn { position: absolute; left: 15px; cursor: pointer; color: #000; font-size: 18px; }
         .more-btn { position: absolute; right: 15px; cursor: pointer; font-weight: bold; font-size: 18px; color: #333; }
-        .nav-action { position: absolute; right: 15px; color: var(--link-color); cursor: pointer; font-size: 14px; font-weight: 500; }
         
         .viewport { flex: 1; overflow-y: auto; position: relative; }
         .page { display: none; height: 100%; }
@@ -117,7 +114,6 @@
                     </select>
                     <button onclick="fetchModels()" id="fetch-model-btn" style="flex-shrink:0; height:36px; padding:0 12px; border:none; background:var(--wechat-green); color:#fff; border-radius:4px; font-size:13px; cursor:pointer;">拉取</button>
                 </div>
-                <div id="fetch-model-tip" style="font-size:11px; color:#888; margin-top:4px;"></div>
             </div>
         </div>
     </div>
@@ -178,15 +174,6 @@ function applyCSS() {
     document.getElementById('RUNTIME_CSS').innerHTML = css;
 }
 
-if(window.visualViewport) {
-    window.visualViewport.addEventListener('resize', () => {
-        const shell = document.getElementById('phone-shell');
-        shell.style.height = window.visualViewport.height + 'px';
-        const area = document.getElementById('chat-area');
-        if(area) area.scrollTop = area.scrollHeight;
-    });
-}
-
 const isImg = (url) => (typeof url === 'string' && (url.match(/\.(jpeg|jpg|gif|png|webp|svg|ico)$/i) != null || url.startsWith('data:image')));
 
 function render() {
@@ -228,7 +215,6 @@ function render() {
                     ${m.img?`<img src="${m.img}" style="max-width:200px;margin-top:8px;border-radius:4px;">`: ''}
                     <div style="display:flex;gap:12px;margin-top:10px;">
                         <span style="color:red;font-size:11px;cursor:pointer;" onclick="db.mo.splice(${idx},1);commit();">删除</span>
-                        <span style="color:var(--link-color);font-size:11px;cursor:pointer;" onclick="aiCommentMoment(${idx})">💬 AI回复</span>
                     </div>
                 </div>
             </div>
@@ -237,113 +223,24 @@ function render() {
     }).join('');
 }
 
-// --- 核心：AI 随机生成多角色朋友圈 ---
-async function generateAIMoments() {
-    if(!db.api.u || !db.api.k) { alert("请先在'我'界面配置 API 接口和密钥"); return; }
-    if(db.c.length === 0) { alert("请先添加至少一个角色"); return; }
-
-    const extra = document.getElementById('nav-extra');
-    const originalContent = extra.innerHTML;
-    extra.innerHTML = `<span style="font-size:12px;color:#999;">生成中...</span>`;
-
-    // 随机决定生成几条 (1-3)
-    const count = Math.min(db.c.length, Math.floor(Math.random() * 3) + 1);
-    // 随机选取不重复的角色
-    const shuffled = [...db.c].sort(() => 0.5 - Math.random());
-    const selectedChars = shuffled.slice(0, count);
-
-    for (const char of selectedChars) {
-        const history = db.m[char.id] || [];
-        const lastChat = history.slice(-10).map(h => `${h.r==='user'?'用户':'角色'}:${h.c}`).join('\n');
-        
-        try {
-            const base = db.api.u.replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '');
-            const res = await fetch(`${base}/chat/completions`, {
-                method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${db.api.k}`},
-                body:JSON.stringify({ 
-                    model: db.api.model || "gpt-3.5-turbo", 
-                    messages:[
-                        {
-                            role:"system",
-                            content: `你正在扮演角色 ${char.n}。你的性格设定是：${char.p}。\n请为该角色写一条微信朋友圈动态。
-                            要求：
-                            1. 必须符合人设。
-                            2. 语气要像真实生活动态（分享心情、吐槽、美景等）。
-                            3. 如果提供了聊天记录，请尝试结合最近聊天的内容（比如聊到了某个话题或约定）。
-                            4. 如果你觉得适合配图，请在文末另起一行加上 [图片描述: xxx]。
-                            5. 输出格式：直接输出动态正文，不要包含角色名字。`
-                        },
-                        { role:"user", content: lastChat ? `最近聊天背景：\n${lastChat}` : "暂无最近聊天，请根据人设自由发挥。" }
-                    ] 
-                })
-            });
-            const data = await res.json();
-            let text = data.choices[0].message.content.trim();
-            
-            // 提取图片描述并尝试生成随机图（这里暂用占位图演示）
-            let img = "";
-            const imgMatch = text.match(/\[图片描述:?\s*(.*?)\]/);
-            if(imgMatch) {
-                text = text.replace(imgMatch[0], '').trim();
-                // 使用关键词生成一个随机风景/生活图
-                img = `https://source.unsplash.com/featured/800x600?${encodeURIComponent(imgMatch[1] || 'life')}`;
-            }
-
-            db.mo.unshift({
-                uid: char.id,
-                t: text,
-                img: img,
-                comments: []
-            });
-        } catch(e) {
-            console.error("生成朋友圈失败", e);
-        }
-    }
-    
-    extra.innerHTML = originalContent;
-    commit();
-}
-
 function startChat(id) {
     curChatId = id;
     isSimMode = false;
     if(!db.m[id]) db.m[id] = [];
     const char = db.c.find(x => x.id === id);
     document.getElementById('chat-title').innerText = char.n;
-    const chatRoom = document.getElementById('chat-room');
-    chatRoom.style.display = 'flex';
-    chatRoom.style.backgroundImage = char.bg ? `url(${char.bg})` : 'none';
+    document.getElementById('chat-room').style.display = 'flex';
+    document.getElementById('chat-room').style.backgroundImage = char.bg ? `url(${char.bg})` : 'none';
     renderChat();
     updateSimUI();
-}
-
-function showTyping(char) {
-    const area = document.getElementById('chat-area');
-    if(!area) return;
-    removeTyping();
-    const div = document.createElement('div');
-    div.className = 'msg ai'; div.id = 'typing-indicator';
-    div.innerHTML = `<img src="${char.a}" class="avatar" style="margin:0"><div class="bubble" style="color:#999; font-style:italic;">对方输入中…</div>`;
-    area.appendChild(div);
-    area.scrollTop = area.scrollHeight;
-}
-function removeTyping() {
-    const el = document.getElementById('typing-indicator');
-    if(el) el.remove();
 }
 
 async function fetchAI(isAuto = false) {
     const tid = isAuto || curChatId;
     if(!tid) return;
-    if(!db.api.u || !db.api.k) { alert("请先在'我'界面配置 API 接口和密钥"); return; }
+    if(!db.api.u || !db.api.k) { alert("请先配置 API"); return; }
     const char = db.c.find(x=>x.id==tid);
     const history = db.m[tid] || [];
-    const last = history.length > 0 ? history[history.length-1].c : "";
-    const activeWI = db.w.filter(i => (i.bind==='all' || i.bind==tid) && (i.isAlways || (i.k && last.includes(i.k)))).map(i=>i.v).join('\n');
-
-    if(curChatId == tid) showTyping(char);
-    const timeCtx = db.timeAware ? getTimeContext(tid) : "";
-
     try {
         const base = db.api.u.replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '');
         const res = await fetch(`${base}/chat/completions`, {
@@ -351,49 +248,16 @@ async function fetchAI(isAuto = false) {
             body:JSON.stringify({ 
                 model: db.api.model || "gpt-3.5-turbo", 
                 messages:[
-                    {
-                        role:"system",
-                        content:`你正在扮演${char.n}，通过手机微信和用户聊天。性格设定:${char.p}\n${timeCtx ? timeCtx + '\n' : ''}规则:${activeWI}\n\n【重要回复格式要求】每次回复必须拆成2~4条简短消息，每条不超过30个字，每条单独一行，像真实发微信一样自然分段。`
-                    }, 
+                    { role:"system", content:`你正在扮演${char.n}。性格设定:${char.p}\n回复要求：简短，像发微信一样分段。` }, 
                     ...history.slice(-10).map(h=>({role:h.r==='user'?'user':'assistant',content:h.c}))
                 ] 
             })
         });
         const data = await res.json();
         const full = data.choices[0].message.content;
-        const parts = full.split('\n').map(s=>s.trim()).filter(s=>s.length>0);
-        
-        parts.forEach(p => db.m[tid].push({ r:'ai', c:p, t:Date.now() }));
-        removeTyping();
-
-        if (db.notifyOn && "Notification" in window && Notification.permission === "granted") {
-            if (document.hidden || curChatId != tid) {
-                let notifyText = parts.join(' ');
-                if(notifyText.includes('http')) notifyText = '[图片消息]';
-                new Notification(char.n, { body: notifyText, icon: char.a });
-            }
-        }
-
+        full.split('\n').map(s=>s.trim()).filter(s=>s.length>0).forEach(p => db.m[tid].push({ r:'ai', c:p, t:Date.now() }));
         commit(); if(curChatId==tid) renderChat();
-        if(isAuto) resetTimer(tid);
-    } catch(e) {
-        removeTyping();
-        console.error(e);
-    }
-}
-
-function toggleSimMode() { isSimMode = !isSimMode; updateSimUI(); }
-function updateSimUI() {
-    const btn = document.getElementById('sim-btn');
-    const input = document.getElementById('chat-in');
-    const char = db.c.find(x=>x.id==curChatId);
-    if(isSimMode) {
-        btn.style.backgroundImage = `url(${char.a})`; btn.style.border = '2px solid orange';
-        input.placeholder = `[模拟 ${char.n} 发消息]`;
-    } else {
-        btn.style.backgroundImage = `url(${db.u.a})`; btn.style.border = '1.5px solid #ccc';
-        input.placeholder = "输入消息...";
-    }
+    } catch(e) { console.error(e); }
 }
 
 function handleSend() {
@@ -402,6 +266,15 @@ function handleSend() {
     if(!val) { fetchAI(); return; }
     db.m[curChatId].push({ r: isSimMode ? 'ai' : 'user', c: val, t: Date.now() });
     input.value = ""; renderChat(); commit();
+    
+    // 检查自动总结
+    const currentModel = db.c.find(x => x.id == curChatId);
+    if (currentModel && currentModel.autoSummary) {
+        const sCount = currentModel.summaryCount || 20;
+        if (db.m[curChatId].length > 0 && db.m[curChatId].length % sCount === 0) {
+            manualSummary(curChatId);
+        }
+    }
 }
 
 function renderChat() {
@@ -414,138 +287,60 @@ function renderChat() {
     area.scrollTop = area.scrollHeight;
 }
 
-function openWorldBook() {
-    showModal('世界书管理', commit, `<button onclick="db.w.push({k:'',v:'',isAlways:true,bind:'all'});renderWL();" style="width:100%;padding:10px;">+ 添加新规则</button><div id="wl"></div>`);
-    renderWL();
-}
-function renderWL() {
-    const opts = (s) => `<option value="all" ${s==='all'?'selected':''}>全部角色生效</option>` + db.c.map(c=>`<option value="${c.id}" ${s==c.id?'selected':''}>角色:${c.n}</option>`).join('');
-    document.getElementById('wl').innerHTML = db.w.map((it, i) => `
-        <div style="background:#f4f4f4;margin:10px;padding:10px;border-radius:6px;border:0.5px solid #ddd;">
-            <select onchange="db.w[${i}].bind=this.value" class="input-item">${opts(it.bind)}</select>
-            <input class="input-item" placeholder="关键词" value="${it.k}" oninput="db.w[${i}].k=this.value">
-            <textarea class="input-item" placeholder="描述" oninput="db.w[${i}].v=this.value" style="height:60px;">${it.v}</textarea>
-            <label><input type="checkbox" ${it.isAlways?'checked':''} onchange="db.w[${i}].isAlways=this.checked"> 常驻生效</label>
-            <p onclick="db.w.splice(${i},1);renderWL();" style="color:red;text-align:right;cursor:pointer;">删除</p>
-        </div>
-    `).join('');
-}
-
 function openCharEdit(id = null) {
     const isE = id !== null;
-    const char = isE ? db.c.find(x=>x.id===id) : { n:'', a:'', p:'', bg:'', css:'', autoOn:false, minT:10, maxT:60 };
+    const char = isE ? db.c.find(x=>x.id===id) : { n:'', a:'', p:'', bg:'', css:'', autoOn:false, minT:10, maxT:60, autoSummary:false, summaryCount:20 };
     showModal(isE?'资料设置':'添加角色', () => {
         const data = {
-            id: isE ? id : Date.now(), n: document.getElementById('i-n').value, a: document.getElementById('i-a').value,
-            p: document.getElementById('i-p').value, bg: document.getElementById('i-bg').value,
-            css: document.getElementById('i-css').value, autoOn: document.getElementById('i-auto').checked,
-            minT: parseInt(document.getElementById('i-min').value), maxT: parseInt(document.getElementById('i-max').value)
+            id: isE ? id : Date.now(), 
+            n: document.getElementById('i-n').value, 
+            a: document.getElementById('i-a').value,
+            p: document.getElementById('i-p').value, 
+            bg: document.getElementById('i-bg').value,
+            css: document.getElementById('i-css').value, 
+            autoOn: document.getElementById('i-auto').checked,
+            autoSummary: document.getElementById('i-autoSummary').checked,
+            summaryCount: parseInt(document.getElementById('i-summaryCount').value) || 20,
+            minT: parseInt(document.getElementById('i-min').value) || 10,
+            maxT: parseInt(document.getElementById('i-max').value) || 60
         };
         if(isE) db.c = db.c.map(x=>x.id===id?data:x); else { db.c.push(data); db.m[data.id]=[]; }
-        commit(); if(data.autoOn) resetTimer(data.id);
+        commit();
     }, `
         <div class="input-group"><span class="input-label">昵称</span><input id="i-n" class="input-item" value="${char.n}"></div>
         <div class="input-group"><span class="input-label">头像 URL</span><input id="i-a" class="input-item" value="${char.a}"></div>
         <div class="input-group"><span class="input-label">设定</span><textarea id="i-p" class="input-item" style="height:60px">${char.p}</textarea></div>
         <div class="input-group"><span class="input-label">背景图 URL</span><input id="i-bg" class="input-item" value="${char.bg||''}"></div>
-        <div class="input-group"><span class="input-label">专属气泡 CSS</span><input id="i-css" class="input-item" value="${char.css||''}"></div>
+        <div class="input-group"><span class="input-label">记忆管理</span>
+            <div style="display:flex; align-items:center; gap:5px;">
+                <label><input type="checkbox" id="i-autoSummary" ${char.autoSummary ? 'checked' : ''}> 每隔</label>
+                <input id="i-summaryCount" type="number" style="width:50px; text-align:center;" value="${char.summaryCount || 20}"> 条自动总结
+            </div>
+            <button onclick="manualSummary(${id})" style="width:100%; margin-top:8px;">立即生成历史总结</button>
+        </div>
         <div class="input-group"><span class="input-label">主动消息</span><label><input type="checkbox" id="i-auto" ${char.autoOn?'checked':''}> 开启</label> 分钟: <input id="i-min" type="number" style="width:40px" value="${char.minT}">-<input id="i-max" type="number" style="width:40px" value="${char.maxT}"></div>
+        <div class="input-group"><span class="input-label">专属气泡 CSS</span><input id="i-css" class="input-item" value="${char.css||''}"></div>
         ${isE ? `<p onclick="deleteChar(${id})" style="color:red;text-align:center;padding:15px;cursor:pointer;">删除角色</p>` : ''}
     `);
 }
-function deleteChar(id) { if(confirm('确定删除吗？')) { db.c=db.c.filter(x=>x.id!=id); delete db.m[id]; db.mo=db.mo.filter(m=>m.uid!=id); commit(); hideModal(); goBack(); } }
 
-function editMe() {
-    showModal('编辑个人信息', () => {
-        db.u.n = document.getElementById('me-n').value; db.u.a = document.getElementById('me-a').value;
-        db.u.bg = document.getElementById('me-bg').value; db.u.p = document.getElementById('me-p').value;
-        db.u.css = document.getElementById('me-css').value; commit();
-    }, `
-        <div class="input-group"><span class="input-label">昵称</span><input id="me-n" class="input-item" value="${db.u.n}"></div>
-        <div class="input-group"><span class="input-label">头像 URL</span><input id="me-a" class="input-item" value="${db.u.a}"></div>
-        <div class="input-group"><span class="input-label">朋友圈封面 URL</span><input id="me-bg" class="input-item" value="${db.u.bg||''}"></div>
-        <div class="input-group"><span class="input-label">个人设定</span><textarea id="me-p" class="input-item">${db.u.p||''}</textarea></div>
-        <div class="input-group"><span class="input-label">气泡 CSS</span><input id="me-css" class="input-item" value="${db.u.css||''}"></div>
-    `);
-}
-
-function postMoment() {
-    let opts = `<option value="me">我</option>`+db.c.map(c=>`<option value="${c.id}">${c.n}</option>`).join('');
-    showModal('发布朋友圈', () => {
-        db.mo.unshift({ uid:document.getElementById('mo-u').value, t:document.getElementById('mo-t').value, img:document.getElementById('mo-i').value, comments:[] });
-        commit();
-    }, `
-        <div class="input-group"><span class="input-label">选择角色</span><select id="mo-u" class="input-item">${opts}</select></div>
-        <div class="input-group"><span class="input-label">正文内容</span><textarea id="mo-t" class="input-item" style="height:80px"></textarea></div>
-        <div class="input-group"><span class="input-label">图片 URL</span><input id="mo-i" class="input-item"></div>
-    `);
-}
-
-async function aiCommentMoment(idx) {
-    if(!db.api.u || !db.api.k) { alert("请先配置API"); return; }
-    const moment = db.mo[idx];
-    const candidates = db.c.filter(c => String(c.id) !== String(moment.uid));
-    const char = candidates.length > 0 ? candidates[Math.floor(Math.random()*candidates.length)] : db.c[0];
-    const author = moment.uid === 'me' ? db.u.n : (db.c.find(x=>x.id==moment.uid)||{n:'TA'}).n;
+async function manualSummary(id) {
+    const char = db.c.find(x => x.id == id);
+    const history = db.m[id] || [];
+    if (history.length < 5) { alert("记录太少"); return; }
     try {
         const base = db.api.u.replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '');
         const res = await fetch(`${base}/chat/completions`, {
-            method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${db.api.k}`},
-            body: JSON.stringify({ model: db.api.model, messages:[
-                {role:'system', content:`你是${char.n}，性格:${char.p}。你在朋友圈看到${author}发了一条动态，请写一句简短评论，不超过20字。`},
-                {role:'user', content: moment.t || '[图片]'}
-            ]})
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${db.api.k}` },
+            body: JSON.stringify({
+                model: db.api.model,
+                messages: [{ role: 'system', content: `总结记忆，150字内。` }, { role: 'user', content: history.slice(-50).map(h=>h.c).join('\n') }]
+            })
         });
         const data = await res.json();
-        const comment = data.choices[0].message.content.trim();
-        if(!moment.comments) moment.comments = [];
-        moment.comments.push({ n: char.n, t: comment });
-        commit();
-    } catch(e) { alert(e.message); }
-}
-
-function openStickerManager() {
-    showModal('表情包管理', commit, `<button onclick="addSticker()" style="width:100%;padding:10px;">+ 添加 URL 表情</button><div id="s-list"></div>`);
-    renderSList();
-}
-function addSticker() {
-    const url = prompt("表情 URL :"); const desc = prompt("描述 :");
-    if(url) { db.s.push({url, desc}); renderSList(); }
-}
-function renderSList() {
-    document.getElementById('s-list').innerHTML = db.s.map((it, i) => `
-        <div class="cell" style="justify-content:space-between">
-            <img src="${it.url}" style="width:40px;height:40px;object-fit:contain;">
-            <span>${it.desc}</span><span style="color:red" onclick="db.s.splice(${i},1);renderSList();">删除</span>
-        </div>
-    `).join('');
-}
-function toggleStickerPanel() {
-    const p = document.getElementById('sticker-panel');
-    p.style.display = p.style.display === 'grid' ? 'none' : 'grid';
-    p.innerHTML = db.s.map(it => `<img src="${it.url}" style="width:100%;aspect-ratio:1;object-fit:contain;cursor:pointer;" onclick="sendSticker('${it.url}')">`).join('');
-}
-function sendSticker(url) {
-    db.m[curChatId].push({ r: isSimMode?'ai':'user', c: url, t: Date.now() });
-    toggleStickerPanel(); commit(); renderChat();
-}
-
-function exportData() {
-    const s = btoa(unescape(encodeURIComponent(JSON.stringify(db))));
-    showModal('导出', null, `<textarea class="input-item" style="height:300px;">${s}</textarea>`);
-}
-function importData() {
-    showModal('导入', () => { try { db=JSON.parse(decodeURIComponent(escape(atob(document.getElementById('imp').value)))); commit(); } catch(e){alert('无效代码');} }, `<textarea id="imp" class="input-item" style="height:300px;"></textarea>`);
-}
-
-function toggleTimeAware() { db.timeAware = !db.timeAware; commit(); }
-async function toggleNotify() {
-    if (!db.notifyOn) {
-        if (!("Notification" in window)) return;
-        if (Notification.permission !== "granted") await Notification.requestPermission();
-        db.notifyOn = true;
-    } else db.notifyOn = false;
-    commit();
+        char.p = (char.p ? char.p + "\n" : "") + "【记忆总结】：" + data.choices[0].message.content;
+        commit(); alert("总结完成！");
+    } catch (e) { alert("失败"); }
 }
 
 function showTab(t, el) {
@@ -553,17 +348,7 @@ function showTab(t, el) {
     document.getElementById('p-'+t).classList.add('active');
     document.querySelectorAll('.tab-item').forEach(i=>i.classList.remove('active'));
     el.classList.add('active');
-    
-    const navTitle = document.getElementById('nav-title');
-    const navExtra = document.getElementById('nav-extra');
-    navTitle.innerText = {msg:'信息', contacts:'好友', moments:'朋友圈', me:'我'}[t];
-    
-    // 朋友圈界面显示 AI 生成按钮
-    if(t === 'moments') {
-        navExtra.innerHTML = `<div class="nav-action" onclick="generateAIMoments()">✨ 自动生成</div>`;
-    } else {
-        navExtra.innerHTML = '';
-    }
+    document.getElementById('nav-title').innerText = {msg:'信息', contacts:'好友', moments:'朋友圈', me:'我'}[t];
     render();
 }
 
@@ -574,39 +359,27 @@ function showModal(t, ok, b) {
     document.getElementById('modal-box').style.display='flex';
 }
 function hideModal() { document.getElementById('modal-box').style.display='none'; }
-function manageMsg(i) {
-    showModal('编辑消息', () => { db.m[curChatId][i].c=document.getElementById('e-m').value; commit(); renderChat(); }, `<textarea id="e-m" class="input-item" style="height:150px">${db.m[curChatId][i].c}</textarea><p onclick="db.m[curChatId].splice(${i},1);hideModal();commit();renderChat();" style="color:red;padding:10px;text-align:center;cursor:pointer;">删除</p>`);
-}
-function resetTimer(cid) { if(timers[cid]) clearTimeout(timers[cid]); const c=db.c.find(x=>x.id==cid); if(!c||!c.autoOn)return; const ms=(Math.floor(Math.random()*(c.maxT-c.minT+1))+c.minT)*60000; timers[cid]=setTimeout(()=>fetchAI(cid), ms); }
-
-async function fetchModels() {
-    const url = document.getElementById('api-url').value;
-    const key = document.getElementById('api-key').value;
-    const btn = document.getElementById('fetch-model-btn');
-    btn.innerText = '...';
-    try {
-        const base = url.replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '');
-        const res = await fetch(`${base}/models`, { headers: { 'Authorization': `Bearer ${key}` } });
-        const data = await res.json();
-        const models = (data.data || []).map(m => m.id);
-        const sel = document.getElementById('api-model');
-        sel.innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
-        db.api.models = models;
-        if(models.length) db.api.model = models[0];
-        commit();
-    } catch(e) { alert('拉取失败'); } finally { btn.innerText = '拉取'; }
+function toggleSimMode() { isSimMode = !isSimMode; updateSimUI(); }
+function updateSimUI() {
+    const btn = document.getElementById('sim-btn');
+    const input = document.getElementById('chat-in');
+    const char = db.c.find(x=>x.id==curChatId);
+    if(isSimMode) {
+        btn.style.backgroundImage = `url(${char.a})`; btn.style.border = '2px solid orange';
+        input.placeholder = `[模拟 ${char.n}]`;
+    } else {
+        btn.style.backgroundImage = `url(${db.u.a})`; btn.style.border = '1.5px solid #ccc';
+        input.placeholder = "输入消息...";
+    }
 }
 
 function saveAPI() {
     db.api.u = document.getElementById('api-url').value;
     db.api.k = document.getElementById('api-key').value;
-    db.api.model = document.getElementById('api-model').value;
     commit();
 }
-function editGlobalCSS() { showModal('全局 CSS', () => { db.g_css=document.getElementById('g-v').value; commit(); }, `<textarea id="g-v" class="input-item" style="height:300px;">${db.g_css}</textarea>`); }
 
 commit();
-db.c.forEach(c => { if(c.autoOn) resetTimer(c.id); });
 </script>
 </body>
 </html>
