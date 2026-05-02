@@ -99,11 +99,11 @@
                 <span class="api-hint">API 接口设置</span>
                 <input class="api-field" id="api-url" placeholder="Endpoint: https://api..." oninput="saveAPI()">
                 <input class="api-field" id="api-key" type="password" placeholder="Key: sk-..." oninput="saveAPI()">
-                <div style="display:flex; gap:8px; align-items:center;">
-                    <select class="api-field" id="api-model" onchange="saveAPI()" style="flex:1; margin-bottom:0;">
+                <div style="display:flex; gap:8px; align-items:center; margin-bottom:10px;">
+                    <select id="api-model" onchange="saveAPI()" style="flex:1; border:1px solid #ddd; padding:8px; border-radius:4px; font-size:14px; min-width:0;">
                         <option value="">— 请先拉取模型 —</option>
                     </select>
-                    <button onclick="fetchModels()" id="fetch-model-btn" style="flex-shrink:0; height:34px; padding:0 10px; border:none; background:var(--wechat-green); color:#fff; border-radius:4px; font-size:13px; cursor:pointer;">拉取</button>
+                    <button onclick="fetchModels()" id="fetch-model-btn" style="flex-shrink:0; height:36px; padding:0 12px; border:none; background:var(--wechat-green); color:#fff; border-radius:4px; font-size:13px; cursor:pointer;">拉取</button>
                 </div>
                 <div id="fetch-model-tip" style="font-size:11px; color:#888; margin-top:4px;"></div>
             </div>
