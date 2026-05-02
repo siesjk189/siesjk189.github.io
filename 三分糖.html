@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>三分糖小手机</title>
+    <style>
+        :root { --wechat-green: #07c160; --bg-color: #ededed; --border-color: #d8d8d8; --link-color: #576b95; }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, sans-serif; }
+        body { background: #000; display: flex; justify-content: center; height: 100vh; overflow: hidden; }
+        #phone-shell { width: 100%; max-width: 414px; height: 100vh; background: var(--bg-color); position: relative; display: flex; flex-direction: column; }
+        
+        .nav { height: 48px; background: var(--bg-color); border-bottom: 0.5px solid var(--border-color); display: flex; align-items: center; justify-content: center; flex-shrink: 0; z-index: 1000; position: relative;}
+        .nav-title { font-weight: bold; font-size: 16px; }
+        .back-btn { position: absolute; left: 15px; cursor: pointer; color: #000; font-size: 18px; }
+        .more-btn { position: absolute; right: 15px; cursor: pointer; font-weight: bold; font-size: 18px; color: #333; }
+        
+        .viewport { flex: 1; overflow-y: auto; position: relative; }
+        .page { display: none; height: 100%; }
+        .page.active { display: block; }
+        
+        #mo-cover { height: 210px; background: #333 center/cover; position: relative; margin-bottom: 45px; }
+        .mo-user-info { position: absolute; right: 15px; bottom: -15px; display: flex; align-items: center; z-index: 10; }
+        .mo-u-name { color: white; text-shadow: 1px 1px 3px #000; font-weight: bold; margin-right: 12px; }
+        .mo-u-avatar { width: 68px; height: 68px; border-radius: 8px; border: 2px solid white; background: #eee; object-fit: cover; }
+        
+        .cell { display: flex; padding: 12px 16px; border-bottom: 0.5px solid #eee; align-items: center; cursor: pointer; background: #fff; }
+        .avatar { width: 48px; height: 48px; border-radius: 6px; background: #eee; object-fit: cover; margin-right: 12px; flex-shrink: 0; }
+        
+        #chat-room { position: fixed; inset: 0; max-width: 414px; margin: auto; background: var(--bg-color) no-repeat center/cover; z-index: 2000; display: none; flex-direction: column; }
+        .chat-msgs { flex: 1; padding: 15px; overflow-y: auto; }
+        .msg { display: flex; margin-bottom: 16px; width: 100%; }
+        .msg.user { flex-direction: row-reverse; }
+        .bubble { max-width: 70%; padding: 10px 12px; font-size: 15px; margin: 0 10px; word-break: break-all; background: #fff; border-radius: 6px; border: 0.5px solid #ddd; line-height: 1.45; }
+        .msg.user .bubble { background: #95ec69; border-color: #82d358; }
+        .bubble img { max-width: 150px; border-radius: 4px; display: block; }
+
+        .input-bar { padding: 10px; background: #f7f7f7; display: flex; align-items: center; border-top: 0.5px solid #ddd; gap: 8px; }
+        .id-toggle { width: 34px; height: 34px; border-radius: 4px; background: #ddd center/cover; cursor: pointer; border: 1.5px solid #ccc; flex-shrink: 0; }
+        #chat-in { flex: 1; border: 0.5px solid #ddd; height: 36px; border-radius: 4px; padding: 0 10px; font-size: 14px; outline: none; }
+
+        .api-panel { margin: 15px; padding: 15px; background: #fff; border: 2px solid #ffcc00; border-radius: 8px; }
+        .api-hint { font-size: 12px; color: #d4a017; font-weight: bold; margin-bottom: 10px; display: block; }
+        .api-field { width: 100%; border: 1px solid #ddd; padding: 8px; border-radius: 4px; margin-bottom: 10px; font-size: 14px; }
+
+        .tab-bar { height: 56px; background: #f7f7f7; border-top: 0.5px solid var(--border-color); display: flex; z-index: 100; }
+        .tab-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px; color: #1a1a1a; cursor: pointer; }
+        .tab-item.active { color: var(--wechat-green); }
+        
+        .modal { position: absolute; inset: 0; background: #fff; z-index: 3000; display: none; flex-direction: column; }
+        .input-group { padding: 12px 15px; border-bottom: 0.5px solid #eee; }
+        .input-label { font-size: 11px; color: #888; margin-bottom: 4px; display: block; }
+        .input-item { border: none; outline: none; font-size: 15px; width: 100%; padding: 4px 0; background: transparent; }
+    </style>
+</head>
+<body>
+
+<div id="phone-shell">
+    <div class="nav"><div id="nav-title" class="nav-title">信息</div></div>
+    
+    <div class="viewport">
+        <div id="p-msg" class="page active"></div>
+        <div id="p-contacts" class="page">
+            <div class="cell" onclick="openCharEdit()"><b style="color:var(--wechat-green)">+ 添加新角色</b></div>
+            <div id="contacts-list"></div>
+        </div>
+        <div id="p-moments" class="page">
+            <div id="mo-cover">
+                <div class="mo-user-info">
+                    <span id="mo-name" class="mo-u-name"></span>
+                    <img id="mo-avatar" class="mo-u-avatar">
+                </div>
+            </div>
+            <div class="cell" onclick="postMoment()" style="justify-content:center; color:var(--link-color); font-weight:500;"> 发布朋友圈</div>
+            <div id="moments-list"></div>
+        </div>
+        <div id="p-me" class="page">
+            <div class="cell" onclick="editMe()"><img id="me-avatar" class="avatar"><b id="me-name"></b></div>
+            <div class="cell" onclick="openStickerManager()">♚表情包管理</div>
+            <div class="cell" onclick="openWorldBook()">♛世界书管理</div>
+            <div class="cell" onclick="editGlobalCSS()">♞全局 UI CSS </div>
+            <div class="cell" onclick="exportData()" style="color:var(--wechat-green)">💾 导出/保存当前配置 </div>
+            <div class="cell" onclick="importData()">📂 导入配置数据 </div>
+            
+            <div class="api-panel">
+                <span class="api-hint">API 接口设置</span>
+                <input class="api-field" id="api-url" placeholder="Endpoint: https://api..." oninput="saveAPI()">
+                <input class="api-field" id="api-key" type="password" placeholder="Key: sk-..." oninput="saveAPI()">
+            </div>
+        </div>
+    </div>
+
+    <div class="tab-bar">
+        <div class="tab-item active" onclick="showTab('msg',this)">♡信息</div>
+        <div class="tab-item" onclick="showTab('contacts',this)">♤好友</div>
+        <div class="tab-item" onclick="showTab('moments',this)">♧朋友圈</div>
+        <div class="tab-item" onclick="showTab('me',this)">♢我</div>
+    </div>
+
+    <div id="chat-room">
+        <div class="nav">
+            <div class="back-btn" onclick="goBack()">‹ 返回</div>
+            <div id="chat-title" class="nav-title"></div>
+            <div class="more-btn" onclick="openCharEdit(curChatId)">>></div>
+        </div>
+        <div class="chat-msgs" id="chat-area"></div>
+        <div class="input-bar">
+            <div id="sim-btn" class="id-toggle" onclick="toggleSimMode()"></div>
+            <input type="text" id="chat-in" placeholder="输入消息..." onkeydown="if(event.key==='Enter') handleSend()">
+            <div onclick="toggleStickerPanel()" style="font-size:24px; cursor:pointer;">☺</div>
+            <button onclick="handleSend()" style="border:none; background:var(--wechat-green); color:white; padding:0 12px; border-radius:4px; height:34px;">发送</button>
+        </div>
+        <div id="sticker-panel" style="display:none; background:#f7f7f7; border-top:0.5px solid #ddd; grid-template-columns: repeat(4, 1fr); gap:10px; padding:10px; max-height:200px; overflow-y:auto;"></div>
+    </div>
+
+    <div id="modal-box" class="modal">
+        <div class="nav">
+            <div onclick="hideModal()" style="position:absolute; left:15px; cursor:pointer;">取消</div>
+            <div id="modal-head" style="font-weight:bold;"></div>
+            <div id="modal-ok" style="position:absolute; right:15px; color:var(--wechat-green); font-weight:bold; cursor:pointer;">完成</div>
+        </div>
+        <div id="modal-body" style="flex:1; overflow-y:auto;"></div>
+    </div>
+</div>
+
+<style id="RUNTIME_CSS"></style>
+
+<script>
+const DB_KEY = "ST_V66_FINAL";
+let db = JSON.parse(localStorage.getItem(DB_KEY)) || {
+    u: { n:'用户', a:'', p:'', bg:'', css:'' },
+    c: [], m: {}, mo: [], w: [], s: [], api: { u:'', k:'' }, g_css: ''
+};
+
+let curChatId = null;
+let isSimMode = false;
+let timers = {};
+
+function commit() { localStorage.setItem(DB_KEY, JSON.stringify(db)); applyCSS(); render(); }
+function applyCSS() {
+    let css = db.g_css ? db.g_css.replace(/\.bubble/g, 'html body #phone-shell .bubble') : "";
+    db.c.forEach(c => { if(c.css) css += `html body #phone-shell .char-msg-${c.id} .bubble { ${c.css} }\n`; });
+    if(db.u.css) css += `html body #phone-shell .msg.user .bubble { ${db.u.css} }\n`;
+    document.getElementById('RUNTIME_CSS').innerHTML = css;
+}
+
+const isImg = (url) => (typeof url === 'string' && (url.match(/\.(jpeg|jpg|gif|png|webp|svg|ico)$/i) != null || url.startsWith('data:image')));
+
+function render() {
+    document.getElementById('me-name').innerText = db.u.n;
+    document.getElementById('me-avatar').src = db.u.a || '';
+    document.getElementById('mo-name').innerText = db.u.n;
+    document.getElementById('mo-avatar').src = db.u.a || '';
+    document.getElementById('mo-cover').style.backgroundImage = db.u.bg ? `url(${db.u.bg})` : 'none';
+    document.getElementById('api-url').value = db.api.u || '';
+    document.getElementById('api-key').value = db.api.k || '';
+    
+    document.getElementById('p-msg').innerHTML = db.c.map(i => {
+        const h = db.m[i.id] || [];
+        const last = h.length > 0 ? h[h.length-1].c : '[暂无对话]';
+        return `<div class="cell" onclick="startChat(${i.id})"><img src="${i.a}" class="avatar"><div><b>${i.n}</b><p style="font-size:12px;color:#888;">${isImg(last)?'[表情]':last.substring(0,20)}</p></div></div>`;
+    }).join('');
+
+    document.getElementById('contacts-list').innerHTML = db.c.map(i => `<div class="cell" onclick="openCharEdit(${i.id})"><img src="${i.a}" class="avatar"><div>${i.n}</div></div>`).join('');
+
+    document.getElementById('moments-list').innerHTML = db.mo.map((m, idx) => {
+        const author = (m.uid==='me') ? db.u : (db.c.find(x=>x.id==m.uid) || {n:'未知', a:''});
+        return `<div class="cell" style="align-items:flex-start;padding:15px;background:#fff;"><img src="${author.a}" class="avatar"><div><b style="color:var(--link-color);">${author.n}</b><p style="margin-top:5px;white-space:pre-wrap;">${m.t}</p>${m.img?`<img src="${m.img}" style="max-width:200px;margin-top:8px;border-radius:4px;">`:''}<div style="color:red;font-size:11px;margin-top:10px;cursor:pointer;" onclick="db.mo.splice(${idx},1);commit();">删除</div></div></div>`;
+    }).join('');
+}
+
+// ✅ 修复：补全完全缺失的 startChat 函数
+function startChat(id) {
+    curChatId = id;
+    isSimMode = false;
+    if(!db.m[id]) db.m[id] = [];
+    const char = db.c.find(x => x.id === id);
+    document.getElementById('chat-title').innerText = char.n;
+    const chatRoom = document.getElementById('chat-room');
+    chatRoom.style.display = 'flex';
+    chatRoom.style.backgroundImage = char.bg ? `url(${char.bg})` : 'none';
+    renderChat();
+    updateSimUI();
+}
+
+// 核心功能：4.空发送读取 API | 15.API 报错详情
+async function fetchAI(isAuto = false) {
+    const tid = isAuto || curChatId;
+    if(!tid) return;
+    if(!db.api.u || !db.api.k) { alert("请先在'我'界面配置 API 接口和密钥"); return; }
+    const char = db.c.find(x=>x.id==tid);
+    const history = db.m[tid] || [];
+    const last = history.length > 0 ? history[history.length-1].c : "";
+    const activeWI = db.w.filter(i => (i.bind==='all' || i.bind==tid) && (i.isAlways || (i.k && last.includes(i.k)))).map(i=>i.v).join('\n');
+    
+    try {
+        const res = await fetch(db.api.u, {
+            method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${db.api.k}`},
+            body:JSON.stringify({ model:"gpt-3.5-turbo", messages:[{role:"system",content:`演${char.n}。性格:${char.p}\n规则:${activeWI}`}, ...history.slice(-10).map(h=>({role:h.r==='user'?'user':'assistant',content:h.c}))] })
+        });
+        const data = await res.json();
+        if(data.error) throw new Error(data.error.message || "接口返回错误");
+        db.m[tid].push({ r:'ai', c:data.choices[0].message.content, t:Date.now() });
+        commit(); if(curChatId==tid) renderChat();
+        if(isAuto) resetTimer(tid);
+    } catch(e) {
+        alert("API 错误详情：\n" + e.message);
+    }
+}
+
+// 5. 模拟模式标识
+function toggleSimMode() { isSimMode = !isSimMode; updateSimUI(); }
+function updateSimUI() {
+    const btn = document.getElementById('sim-btn');
+    const input = document.getElementById('chat-in');
+    const char = db.c.find(x=>x.id==curChatId);
+    if(isSimMode) {
+        btn.style.backgroundImage = `url(${char.a})`; btn.style.border = '2px solid orange';
+        input.placeholder = `[用户模拟角色 ${char.n} 发消息]`;
+    } else {
+        btn.style.backgroundImage = `url(${db.u.a})`; btn.style.border = '1.5px solid #ccc';
+        input.placeholder = "输入消息...";
+    }
+}
+
+function handleSend() {
+    const input = document.getElementById('chat-in');
+    const val = input.value.trim();
+    if(!val) { fetchAI(); return; }
+    db.m[curChatId].push({ r: isSimMode ? 'ai' : 'user', c: val, t: Date.now() });
+    input.value = ""; renderChat(); commit();
+}
+
+function renderChat() {
+    const area = document.getElementById('chat-area');
+    const char = db.c.find(x=>x.id==curChatId);
+    area.innerHTML = (db.m[curChatId]||[]).map((msg, i) => {
+        const content = isImg(msg.c) ? `<img src="${msg.c}">` : msg.c;
+        return `<div class="msg ${msg.r==='user'?'user':'ai char-msg-'+char.id}"><img src="${msg.r==='user'?db.u.a:char.a}" class="avatar" style="margin:0"><div class="bubble" ondblclick="manageMsg(${i})">${content}</div></div>`;
+    }).join('');
+    area.scrollTop = area.scrollHeight;
+}
+
+// 7. 世界书管理
+function openWorldBook() {
+    showModal('世界书管理', commit, `<button onclick="db.w.push({k:'',v:'',isAlways:true,bind:'all'});renderWL();" style="width:100%;padding:10px;">+ 添加新规则</button><div id="wl"></div>`);
+    renderWL();
+}
+function renderWL() {
+    const opts = (s) => `<option value="all" ${s==='all'?'selected':''}>全部角色生效</option>` + db.c.map(c=>`<option value="${c.id}" ${s==c.id?'selected':''}>角色:${c.n}</option>`).join('');
+    document.getElementById('wl').innerHTML = db.w.map((it, i) => `
+        <div style="background:#f4f4f4;margin:10px;padding:10px;border-radius:6px;border:0.5px solid #ddd;">
+            <select onchange="db.w[${i}].bind=this.value" class="input-item">${opts(it.bind)}</select>
+            <input class="input-item" placeholder="关键词 " value="${it.k}" oninput="db.w[${i}].k=this.value">
+            <textarea class="input-item" placeholder="描述 " oninput="db.w[${i}].v=this.value" style="height:60px;">${it.v}</textarea>
+            <label><input type="checkbox" ${it.isAlways?'checked':''} onchange="db.w[${i}].isAlways=this.checked"> 常驻生效 </label>
+            <p onclick="db.w.splice(${i},1);renderWL();" style="color:red;text-align:right;cursor:pointer;">删除 </p>
+        </div>
+    `).join('');
+}
+
+// 11. 删除角色无遗漏 | 12. 添加角色保存成功
+function openCharEdit(id = null) {
+    const isE = id !== null;
+    const char = isE ? db.c.find(x=>x.id===id) : { n:'', a:'', p:'', bg:'', css:'', autoOn:false, minT:10, maxT:60 };
+    showModal(isE?'资料设置':'添加角色', () => {
+        const data = {
+            id: isE ? id : Date.now(), n: document.getElementById('i-n').value, a: document.getElementById('i-a').value,
+            p: document.getElementById('i-p').value, bg: document.getElementById('i-bg').value,
+            css: document.getElementById('i-css').value, autoOn: document.getElementById('i-auto').checked,
+            minT: parseInt(document.getElementById('i-min').value), maxT: parseInt(document.getElementById('i-max').value)
+        };
+        if(isE) db.c = db.c.map(x=>x.id===id?data:x); else { db.c.push(data); db.m[data.id]=[]; }
+        commit(); if(data.autoOn) resetTimer(data.id);
+    }, `
+        <div class="input-group"><span class="input-label">昵称 </span><input id="i-n" class="input-item" value="${char.n}"></div>
+        <div class="input-group"><span class="input-label">头像 URL </span><input id="i-a" class="input-item" value="${char.a}"></div>
+        <div class="input-group"><span class="input-label">设定 </span><textarea id="i-p" class="input-item" style="height:60px">${char.p}</textarea></div>
+        <div class="input-group"><span class="input-label">背景图 URL</span><input id="i-bg" class="input-item" value="${char.bg||''}"></div>
+        <div class="input-group"><span class="input-label">专属气泡 CSS </span><input id="i-css" class="input-item" value="${char.css||''}"></div>
+        <div class="input-group"><span class="input-label">主动消息 </span><label><input type="checkbox" id="i-auto" ${char.autoOn?'checked':''}> 开启</label> 随机范围(分): <input id="i-min" type="number" style="width:40px" value="${char.minT}">-<input id="i-max" type="number" style="width:40px" value="${char.maxT}"></div>
+        ${isE ? `<p onclick="deleteChar(${id})" style="color:red;text-align:center;padding:15px;cursor:pointer;">删除角色 </p>` : ''}
+    `);
+}
+function deleteChar(id) {
+    if(confirm('警告：删除角色将连带删除其所有聊天记录和朋友圈消息，确定要删除该好友吗？')) {
+        db.c=db.c.filter(x=>x.id!=id); delete db.m[id]; db.mo=db.mo.filter(m=>m.uid!=id); commit(); hideModal(); goBack();
+    }
+}
+
+// 8. 用户设定全包含 | 12. 编辑用户成功
+function editMe() {
+    showModal('编辑个人信息', () => {
+        db.u.n = document.getElementById('me-n').value; db.u.a = document.getElementById('me-a').value;
+        db.u.bg = document.getElementById('me-bg').value; db.u.p = document.getElementById('me-p').value;
+        db.u.css = document.getElementById('me-css').value; commit();
+    }, `
+        <div class="input-group"><span class="input-label">昵称</span><input id="me-n" class="input-item" value="${db.u.n}"></div>
+        <div class="input-group"><span class="input-label">头像 URL </span><input id="me-a" class="input-item" value="${db.u.a}"></div>
+        <div class="input-group"><span class="input-label">朋友圈封面 URL </span><input id="me-bg" class="input-item" value="${db.u.bg||''}"></div>
+        <div class="input-group"><span class="input-label">个人设定 </span><textarea id="me-p" class="input-item">${db.u.p||''}</textarea></div>
+        <div class="input-group"><span class="input-label">气泡 CSS (1)</span><input id="me-css" class="input-item" value="${db.u.css||''}"></div>
+    `);
+}
+
+// 9. 朋友圈功能全项
+function postMoment() {
+    let opts = `<option value="me">我</option>`+db.c.map(c=>`<option value="${c.id}">${c.n}</option>`).join('');
+    showModal('发布朋友圈', () => {
+        db.mo.unshift({ uid:document.getElementById('mo-u').value, t:document.getElementById('mo-t').value, img:document.getElementById('mo-i').value });
+        commit();
+    }, `
+        <div class="input-group"><span class="input-label">选择角色 </span><select id="mo-u" class="input-item">${opts}</select></div>
+        <div class="input-group"><span class="input-label">正文内容 </span><textarea id="mo-t" class="input-item" style="height:80px"></textarea></div>
+        <div class="input-group"><span class="input-label">图片 URL </span><input id="mo-i" class="input-item"></div>
+    `);
+}
+
+// 6. 表情包功能
+function openStickerManager() {
+    showModal('表情包管理', commit, `<button onclick="addSticker()" style="width:100%;padding:10px;">+ 添加 URL 表情</button><div id="s-list"></div>`);
+    renderSList();
+}
+function addSticker() {
+    const url = prompt("表情 URL :"); const desc = prompt("描述 :");
+    if(url) { db.s.push({url, desc}); renderSList(); }
+}
+function renderSList() {
+    document.getElementById('s-list').innerHTML = db.s.map((it, i) => `
+        <div class="cell" style="justify-content:space-between">
+            <img src="${it.url}" style="width:40px;height:40px;object-fit:contain;">
+            <span>${it.desc}</span><span style="color:red" onclick="db.s.splice(${i},1);renderSList();">删除 </span>
+        </div>
+    `).join('');
+}
+function toggleStickerPanel() {
+    const p = document.getElementById('sticker-panel');
+    p.style.display = p.style.display === 'grid' ? 'none' : 'grid';
+    p.innerHTML = db.s.map(it => `<img src="${it.url}" style="width:100%;aspect-ratio:1;object-fit:contain;cursor:pointer;" onclick="sendSticker('${it.url}')">`).join('');
+}
+function sendSticker(url) {
+    db.m[curChatId].push({ r: isSimMode?'ai':'user', c: url, t: Date.now() });
+    toggleStickerPanel(); commit(); renderChat();
+}
+
+// 10/14. 配置导出导入
+function exportData() {
+    const s = btoa(unescape(encodeURIComponent(JSON.stringify(db))));
+    showModal('配置导出', null, `<p style="font-size:11px;color:red;">请完整复制下方内容进行保存：</p><textarea class="input-item" style="height:300px;">${s}</textarea>`);
+}
+function importData() {
+    showModal('配置导入', () => { try { db=JSON.parse(decodeURIComponent(escape(atob(document.getElementById('imp').value)))); commit(); alert('配置加载成功'); } catch(e){alert('无效代码');} }, `<textarea id="imp" class="input-item" placeholder="在此粘贴代码..." style="height:300px;"></textarea>`);
+}
+
+// 基础辅助逻辑
+// ✅ 修复：showTab 使用传入的元素引用而非 event.currentTarget（部分环境下 event 作用域丢失）
+function showTab(t, el) {
+    document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+    document.getElementById('p-'+t).classList.add('active');
+    document.querySelectorAll('.tab-item').forEach(i=>i.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById('nav-title').innerText={msg:'信息', contacts:'好友', moments:'朋友圈', me:'我'}[t];
+    render();
+}
+function goBack() { document.getElementById('chat-room').style.display='none'; curChatId=null; render(); }
+function showModal(t, ok, b) {
+    document.getElementById('modal-head').innerText=t; document.getElementById('modal-body').innerHTML=b;
+    document.getElementById('modal-ok').onclick=()=>{if(ok)ok(); hideModal();};
+    document.getElementById('modal-box').style.display='flex';
+}
+function hideModal() { document.getElementById('modal-box').style.display='none'; }
+function manageMsg(i) {
+    showModal('双击编辑消息', () => { db.m[curChatId][i].c=document.getElementById('e-m').value; commit(); renderChat(); }, `<textarea id="e-m" class="input-item" style="height:150px">${db.m[curChatId][i].c}</textarea><p onclick="db.m[curChatId].splice(${i},1);hideModal();commit();renderChat();" style="color:red;padding:10px;text-align:center;cursor:pointer;">删除此消息</p>`);
+}
+function resetTimer(cid) { if(timers[cid]) clearTimeout(timers[cid]); const c=db.c.find(x=>x.id==cid); if(!c||!c.autoOn)return; const ms=(Math.floor(Math.random()*(c.maxT-c.minT+1))+c.minT)*60000; timers[cid]=setTimeout(()=>fetchAI(cid), ms); }
+function saveAPI() { db.api.u=document.getElementById('api-url').value; db.api.k=document.getElementById('api-key').value; commit(); }
+function editGlobalCSS() { showModal('全局 CSS', () => { db.g_css=document.getElementById('g-v').value; commit(); }, `<textarea id="g-v" class="input-item" style="height:300px;">${db.g_css}</textarea>`); }
+
+commit();
+db.c.forEach(c => { if(c.autoOn) resetTimer(c.id); });
+</script>
+</body>
+</html>
