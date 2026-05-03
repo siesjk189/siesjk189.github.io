@@ -252,7 +252,7 @@ function render() {
                     ${m.img?`<img src="${m.img}" style="max-width:200px;margin-top:8px;border-radius:4px;">`: ''}
                     <div style="display:flex;gap:12px;margin-top:10px;">
                         <span style="color:red;font-size:11px;cursor:pointer;" onclick="db.mo.splice(${idx},1);commit();">删除</span>
-                        <span style="color:var(--link-color);font-size:11px;cursor:pointer;" onclick="aiCommentMoment(${idx})">💬 AI回复</span>
+                        <span style="color:var(--link-color);font-size:11px;cursor:pointer;" onclick="aiCommentMoment(${idx})">💬 回复</span>
                     </div>
                 </div>
             </div>
