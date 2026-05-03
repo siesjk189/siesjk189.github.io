@@ -366,6 +366,17 @@ async function fetchAI(isAuto = false) {
         } catch(e) { timeCtx = ""; }
     }
 
+    // 合并连续AI消息，取最近30条作为上下文
+    const historyMsgs = [];
+    for(const h of history.slice(-30)) {
+        const role = h.r === 'user' ? 'user' : 'assistant';
+        if(historyMsgs.length > 0 && historyMsgs[historyMsgs.length-1].role === role) {
+            historyMsgs[historyMsgs.length-1].content += '\n' + h.c;
+        } else {
+            historyMsgs.push({ role, content: h.c });
+        }
+    }
+
     let parts = [];
     try {
         if(curChatId == tid) showTyping(char);
@@ -493,10 +504,16 @@ function updateSimUI() {
 function handleSend() {
     const input = document.getElementById('chat-in');
     const val = input.value.trim();
-    if(!val) { fetchAI(); return; } // 输入为空时直接调用AI
+    if(!val) {
+        // 输入框为空时点发送 → 调用AI
+        fetchAI();
+        return;
+    }
+    // 有内容时只发送消息，不自动调AI
     db.m[curChatId].push({ r: isSimMode ? 'ai' : 'user', c: val, t: Date.now() });
-    input.value = ""; renderChat(); commit();
-    if (!isSimMode) fetchAI(); // 有内容时发送后也触发AI
+    input.value = "";
+    renderChat();
+    commit();
 }
 
 function renderChat() {
@@ -740,13 +757,12 @@ async function manualSummary(id) {
 }
 
 function clearChatHistory(id) {
-    if(confirm('确定清空聊天记录吗？')) {
+    showModal('清空聊天记录', () => {
         db.m[id] = [];
         if(db.apiCallCount) db.apiCallCount[id] = 0;
         commit();
-        hideModal();
         if(curChatId == id) renderChat();
-    }
+    }, '<p style="padding:30px 20px;text-align:center;font-size:15px;color:#333;">确定要清空聊天记录吗？<br><span style="color:#999;font-size:13px;margin-top:8px;display:block;">删除后无法恢复</span></p>');
 }
 function deleteChar(id) { if(confirm('确定删除吗？')) { db.c=db.c.filter(x=>x.id!=id); delete db.m[id]; db.mo=db.mo.filter(m=>m.uid!=id); commit(); hideModal(); goBack(); } }
 
