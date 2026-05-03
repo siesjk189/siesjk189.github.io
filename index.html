@@ -393,6 +393,13 @@ async function fetchAI(isAuto = false) {
                         content:`你正在扮演${char.n}，通过手机微信和用户聊天。
 性格设定:${char.p}
 ${char.memory ? '【角色记忆】:\n' + char.memory + '\n' : ''}${char.innerState ? '【当前状态/心声】（仅供参考，绝对不要在消息中描述动作或心声）:\n' + char.innerState + '\n' : ''}${timeCtx ? timeCtx + '\n【时间要求】请根据当前时间自然聊天，不要提出与时间不符的事情（如下午4点不要问吃饭了吗）。\n' : ''}${activeWI ? '规则:' + activeWI + '\n' : ''}
+【自检思维链】在回复前，请在脑海中依次完成以下步骤（不要输出思维链内容）：
+1. 身份定位：我是${char.n}，性格如何？我的身份是什么？此时我正在做什么？目前和用户的关系是什么？
+2. 情感分析：看到用户消息时我的心情（喜悦/抱怨/撒娇）？以我的性格，此时心里怎么想的，应该怎么回复消息？
+3. 拒绝水话：严禁出现"在干嘛"、"吃了吗"或恶意揣测用户（如"你在偷懒"）的对话。
+4. 氛围营造：如果我是主动发起聊天，应该通过分享我当下的琐事（如：天上的云、刚喝的咖啡、手头的麻烦事）来切入。
+5. 情绪共鸣：分析用户情绪，像真人一样给予带有人设色彩的回应，而非死板关心。
+6. 最终确认：语气是否自然？是否符合人设？如果有不符合人设的内容，是否替换为符合人设的内容？是否像真实的线上聊天？
 【绝对禁止】不能用括号()【】*等符号描述动作、神态、心情，只能发纯文字消息，就像真实发微信一样。
 【记忆要求】仔细阅读上方记忆区和完整聊天记录，不要重复询问用户已经说过的事情，不要忘记之前聊过的内容。
 ${db.innerStateOn ? `【回复格式】必须严格按以下格式输出，不能有任何多余内容：
@@ -547,6 +554,17 @@ async function autoUpdateInnerState(tid) {
     if(!db.api.u || !db.api.k) return;
     const char = db.c.find(x=>x.id==tid);
     if(!char) return;
+        // --- 计算时间感知的逻辑开始 ---
+    let timeInfo = "";
+    if(db.timeOn && char.msgs && char.msgs.length > 0) {
+        const lastT = char.msgs[char.msgs.length-1].t;
+        const diff = (Date.now() - lastT) / 1000; 
+        if(diff < 60) timeInfo = `(距离上次通话刚过去 ${Math.floor(diff)} 秒)`;
+        else if(diff < 3600) timeInfo = `(距离上次通话已过去 ${Math.floor(diff/60)} 分钟)`;
+        else timeInfo = `(距离上次通话已过去 ${Math.floor(diff/3600)} 小时)`;
+    }
+    const nowStr = new Date().toLocaleString();
+    // --- 计算时间感知的逻辑结束 ---
     const history = (db.m[tid] || []).slice(-20).map(h=>`${h.r==='user'?'用户':char.n}:${h.c}`).join('\n');
     if(!history) return;
     try {
