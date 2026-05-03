@@ -348,10 +348,12 @@ async function fetchAI(isAuto = false) {
     let parts = [];
     try {
         const base = db.api.u.replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '');
+        // 去掉模型名里可能含有的前缀标签，如 [按次]、[免费] 等
+        const modelName = (db.api.model || "gpt-3.5-turbo").replace(/^\[.*?\]\s*/, "").trim();
         const res = await fetch(`${base}/chat/completions`, {
             method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${db.api.k}`},
             body:JSON.stringify({ 
-                model: db.api.model || "gpt-3.5-turbo",
+                model: modelName,
                 stream: false,
                 messages:[
                     {
@@ -370,8 +372,10 @@ async function fetchAI(isAuto = false) {
             throw new Error("API 返回格式错误，请确认接口地址正确且未开启 stream 模式");
         }
 
+        // 调试：显示实际模型名和返回内容
         if(!data.choices || !data.choices[0] || !data.choices[0].message) {
-            throw new Error(data.error?.message || "API 返回数据异常");
+            const errMsg = data.error?.message || JSON.stringify(data);
+            throw new Error(`模型: ${modelName}\nAPI错误: ${errMsg}`);
         }
 
         const full = data.choices[0].message.content;
