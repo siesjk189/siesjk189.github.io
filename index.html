@@ -192,6 +192,49 @@ let curChatId = null;
 let isSimMode = false;
 let timers = {};
 
+// ── 无声音频保活 ──────────────────────────────────────────
+// 用 AudioContext 生成一段静音循环，让浏览器认为页面"正在播放音频"
+// 从而在 Android 上延迟页面被系统冻结，提高后台 JS 存活率
+// iOS Safari 限制严格，此方法在 iOS 上基本无效
+let _keepAliveCtx = null;
+let _keepAliveNode = null;
+
+function startKeepAlive() {
+    try {
+        if (_keepAliveCtx) return; // 已在运行
+        _keepAliveCtx = new (window.AudioContext || window.webkitAudioContext)();
+        // 创建一个增益节点，增益为 0（完全静音）
+        const gainNode = _keepAliveCtx.createGain();
+        gainNode.gain.value = 0;
+        // 创建一个持续振荡器作为"内容"（否则某些浏览器会优化掉空音频）
+        const osc = _keepAliveCtx.createOscillator();
+        osc.frequency.value = 440;
+        osc.connect(gainNode);
+        gainNode.connect(_keepAliveCtx.destination);
+        osc.start();
+        _keepAliveNode = osc;
+    } catch(e) {
+        console.log('保活启动失败:', e);
+    }
+}
+
+function stopKeepAlive() {
+    try {
+        if (_keepAliveNode) { _keepAliveNode.stop(); _keepAliveNode = null; }
+        if (_keepAliveCtx) { _keepAliveCtx.close(); _keepAliveCtx = null; }
+    } catch(e) {}
+}
+
+// 监听通知开关状态，同步启停保活
+function syncKeepAlive() {
+    if (db.notifyOn) {
+        startKeepAlive();
+    } else {
+        stopKeepAlive();
+    }
+}
+// ─────────────────────────────────────────────────────────
+
 function commit() { localStorage.setItem(DB_KEY, JSON.stringify(db)); applyCSS(); render(); }
 function applyCSS() {
     let css = db.g_css ? db.g_css.replace(/\.bubble/g, 'html body #phone-shell .bubble') : "";
@@ -896,11 +939,12 @@ async function toggleNotify() {
         const perm = await Notification.requestPermission();
         if (perm !== "granted") { alert("未获得通知权限，无法开启"); return; }
         db.notifyOn = true;
-        alert("通知已开启！切到后台后AI回复会推送通知。");
+        alert("通知已开启！已启动后台保活（Android 有效，iOS 受限）。");
     } else {
         db.notifyOn = false;
     }
     commit();
+    syncKeepAlive();
 }
 
 function showTab(t, el) {
@@ -972,6 +1016,8 @@ commit();
 db.c.forEach(c => { if(c.autoOn) resetTimer(c.id); });
 // 首次打开显示声明
 if (!localStorage.getItem('ST_DISCLAIMER_OK')) { showDisclaimer(); }
+// 如果通知已开启，恢复保活
+syncKeepAlive();
 </script>
 </body>
 </html>
