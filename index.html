@@ -342,11 +342,19 @@ async function fetchAI(isAuto = false) {
     const last = history.length > 0 ? history[history.length-1].c : "";
     const activeWI = db.w.filter(i => (i.bind==='all' || i.bind==tid) && (i.isAlways || (i.k && last.includes(i.k)))).map(i=>i.v).join('\n');
 
-    if(curChatId == tid) showTyping(char);
-    const timeCtx = db.timeAware ? getTimeContext(tid) : "";
+    // 生成时间上下文（内联实现，避免函数未定义报错）
+    let timeCtx = "";
+    if(db.timeAware) {
+        try {
+            const now = new Date();
+            const days = ["周日","周一","周二","周三","周四","周五","周六"];
+            timeCtx = `【当前时间】${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日 ${days[now.getDay()]} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+        } catch(e) { timeCtx = ""; }
+    }
 
     let parts = [];
     try {
+        if(curChatId == tid) showTyping(char);
         const base = db.api.u.replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '');
         // 去掉模型名里可能含有的前缀标签，如 [按次]、[免费] 等
         const modelName = (db.api.model || "gpt-3.5-turbo").replace(/^\[.*?\]\s*/, "").trim();
