@@ -193,21 +193,18 @@ let isSimMode = false;
 let timers = {};
 
 // ── 无声音频保活 ──────────────────────────────────────────
-// AudioContext 必须在用户交互后才能启动（浏览器安全限制）
-// 所以用一个标志位记录"是否应该保活"，等用户第一次点击时再真正启动
 let _keepAliveCtx = null;
 let _keepAliveShouldRun = false;
 
 function _startAudioCtx() {
     try {
         if (_keepAliveCtx && _keepAliveCtx.state !== 'closed') {
-            // 如果被浏览器暂停了就恢复
             if (_keepAliveCtx.state === 'suspended') _keepAliveCtx.resume();
             return;
         }
         _keepAliveCtx = new (window.AudioContext || window.webkitAudioContext)();
         const gain = _keepAliveCtx.createGain();
-        gain.gain.value = 0; // 完全静音
+        gain.gain.value = 0;
         const osc = _keepAliveCtx.createOscillator();
         osc.frequency.value = 440;
         osc.connect(gain);
@@ -215,31 +212,20 @@ function _startAudioCtx() {
         osc.start();
     } catch(e) { console.log('保活启动失败:', e); }
 }
-
 function startKeepAlive() {
     _keepAliveShouldRun = true;
-    // 如果已有用户交互过（AudioContext 可以创建），立即启动
     _startAudioCtx();
 }
-
 function stopKeepAlive() {
     _keepAliveShouldRun = false;
-    try {
-        if (_keepAliveCtx) { _keepAliveCtx.close(); _keepAliveCtx = null; }
-    } catch(e) {}
+    try { if (_keepAliveCtx) { _keepAliveCtx.close(); _keepAliveCtx = null; } } catch(e) {}
 }
-
 function syncKeepAlive() {
     if (db.notifyOn) startKeepAlive(); else stopKeepAlive();
 }
-
-// 监听用户第一次交互，此时 AudioContext 才被允许创建
-document.addEventListener('click', function onFirstClick() {
+document.addEventListener('click', function() {
     if (_keepAliveShouldRun) _startAudioCtx();
-    // 页面切回前台时恢复（某些浏览器会 suspend AudioContext）
 }, { passive: true });
-
-// 页面可见性变化时恢复 AudioContext（从后台切回来时）
 document.addEventListener('visibilitychange', () => {
     if (!document.hidden && _keepAliveShouldRun && _keepAliveCtx) {
         _keepAliveCtx.resume().catch(()=>{});
@@ -543,15 +529,11 @@ INNERSTATE:
     }
 
     if (db.notifyOn && "Notification" in window && Notification.permission === "granted") {
-        // 不在该聊天界面，或页面已切到后台，则发通知
-        const notInChat = (curChatId != tid) || document.getElementById('chat-room').style.display === 'none';
-        if (notInChat || document.hidden) {
-            let notifyText = parts[parts.length - 1] || parts.join(' ');
-            if(isImg(notifyText)) notifyText = '[图片消息]';
-            try {
-                new Notification(char.n, { body: notifyText, icon: char.a || '' });
-            } catch(e) { console.log('通知失败', e); }
-        }
+        let notifyText = parts[parts.length - 1] || parts.join(' ');
+        if(isImg(notifyText)) notifyText = '[图片消息]';
+        try {
+            new Notification(char.n, { body: notifyText, icon: char.a || '' });
+        } catch(e) { console.log('通知失败', e); }
     }
 
     // 记录 API 调用次数
@@ -952,7 +934,7 @@ async function toggleNotify() {
         const perm = await Notification.requestPermission();
         if (perm !== "granted") { alert("未获得通知权限，无法开启"); return; }
         db.notifyOn = true;
-        alert("通知已开启！已启动后台保活。");
+        alert("通知已开启！已启动后台保活（Android 有效，iOS 受限）。");
     } else {
         db.notifyOn = false;
     }
@@ -1027,9 +1009,7 @@ function closeDisclaimer() {
 
 commit();
 db.c.forEach(c => { if(c.autoOn) resetTimer(c.id); });
-// 首次打开显示声明
 if (!localStorage.getItem('ST_DISCLAIMER_OK')) { showDisclaimer(); }
-// 恢复保活状态（标志位先设好，等用户点击时 AudioContext 才真正启动）
 syncKeepAlive();
 </script>
 </body>
