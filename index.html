@@ -365,7 +365,11 @@ async function fetchAI(isAuto = false) {
                 messages:[
                     {
                         role:"system",
-                        content:`你正在扮演${char.n}，通过手机微信和用户聊天。性格设定:${char.p}\n${char.memory ? '【角色记忆】:\n' + char.memory + '\n' : ''}${timeCtx ? timeCtx + '\n' : ''}规则:${activeWI}\n\n【重要回复格式要求】每次回复必须拆成2~4条简短消息，每条不超过30个字，每条单独一行，像真实发微信一样自然分段。`
+                        content:`你正在扮演${char.n}，通过手机微信和用户聊天。
+性格设定:${char.p}
+${char.memory ? '【角色记忆】:\n' + char.memory + '\n' : ''}${char.innerState ? '【当前状态/心声】（仅供参考，绝对不要在消息中描述动作或心声）:\n' + char.innerState + '\n' : ''}${timeCtx ? timeCtx + '\n【时间要求】请根据当前时间自然聊天，不要提出与时间不符的事情（如下午4点不要问吃饭了吗）。\n' : ''}${activeWI ? '规则:' + activeWI + '\n' : ''}
+【绝对禁止】不能用括号()【】*等符号描述动作、神态、心情，只能发纯文字消息，就像真实发微信一样。
+【回复格式】每次拆成1~3条简短消息，每条不超过25个字，每条单独一行。`
                     }, 
                     ...history.slice(-10).map(h=>({role:h.r==='user'?'user':'assistant',content:h.c}))
                 ] 
@@ -491,7 +495,7 @@ function renderWL() {
 
 function openCharEdit(id = null) {
     const isE = id !== null;
-    const char = isE ? db.c.find(x=>x.id===id) : { n:'', a:'', p:'', bg:'', css:'', autoOn:false, minT:10, maxT:60, autoSummary:false, summaryCount:20, summaryMinLen:100, summaryMaxLen:300, memory:'' };
+    const char = isE ? db.c.find(x=>x.id===id) : { n:'', a:'', p:'', bg:'', css:'', innerState:'', autoOn:false, minT:10, maxT:60, autoSummary:false, summaryCount:20, summaryMinLen:100, summaryMaxLen:300, memory:'' };
     showModal(isE?'资料设置':'添加角色', () => {
         const data = {
             id: isE ? id : Date.now(),
@@ -506,6 +510,7 @@ function openCharEdit(id = null) {
             summaryMinLen: parseInt(document.getElementById('i-summaryMinLen').value) || 100,
             summaryMaxLen: parseInt(document.getElementById('i-summaryMaxLen').value) || 300,
             memory: document.getElementById('i-memory').value,
+            innerState: document.getElementById('i-innerState').value,
             minT: parseInt(document.getElementById('i-min').value),
             maxT: parseInt(document.getElementById('i-max').value)
         };
@@ -516,6 +521,10 @@ function openCharEdit(id = null) {
         <div class="input-group"><span class="input-label">头像 URL</span><input id="i-a" class="input-item" value="${char.a}"></div>
         <div class="input-group"><span class="input-label">设定</span><textarea id="i-p" class="input-item" style="height:60px">${char.p}</textarea></div>
         <div class="input-group"><span class="input-label">背景图 URL</span><input id="i-bg" class="input-item" value="${char.bg||''}"></div>
+        <div class="input-group">
+            <span class="input-label">💭 当前状态/心声（AI知道但不会发出来）</span>
+            <textarea id="i-innerState" class="input-item" style="height:60px; font-size:13px; color:#555;" placeholder="例如：正在批改试卷，有点烦躁，但看到用户消息会开心">${char.innerState||''}</textarea>
+        </div>
         <div class="input-group"><span class="input-label">气泡 CSS</span><input id="i-css" class="input-item" value="${char.css||''}"></div>
 
         <div class="input-group">
