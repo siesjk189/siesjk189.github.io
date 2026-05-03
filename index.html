@@ -103,6 +103,7 @@
             <div class="cell" onclick="openWorldBook()">♛世界书管理</div>
             <div class="cell" onclick="editGlobalCSS()">♞全局 UI CSS </div>
             <div class="cell" onclick="toggleTimeAware()" id="time-aware-cell">♟ 时间感知：<span id="time-aware-status" style="color:#999;">关闭</span></div>
+            <div class="cell" onclick="toggleInnerState()" id="inner-state-cell">♜ 心声自动生成：<span id="inner-state-status" style="color:#999;">关闭</span></div>
             <div class="cell" onclick="toggleNotify()" id="notify-cell">♝ 消息通知：<span id="notify-status" style="color:#999;">关闭</span></div>
             <div class="cell" onclick="exportData()" style="color:var(--wechat-green)">※ 导出/保存当前配置 </div>
             <div class="cell" onclick="importData()">※ 导入配置数据 </div>
@@ -163,7 +164,7 @@
 const DB_KEY = "ST_V66_MOMENTS_AI";
 let db = JSON.parse(localStorage.getItem(DB_KEY)) || {
     u: { n:'用户', a:'', p:'', bg:'', css:'' },
-    c: [], m: {}, mo: [], w: [], s: [], api: { u:'', k:'', model:'' }, g_css: '', timeAware: false, notifyOn: false,
+    c: [], m: {}, mo: [], w: [], s: [], api: { u:'', k:'', model:'' }, g_css: '', timeAware: false, notifyOn: false, innerStateOn: false,
     apiCallCount: {}  // 记录每个角色的 API 调用次数，用于自动总结触发
 };
 
@@ -212,6 +213,8 @@ function render() {
 
     const taEl = document.getElementById('time-aware-status');
     if(taEl) { taEl.innerText = db.timeAware ? '开启' : '关闭'; taEl.style.color = db.timeAware ? 'var(--wechat-green)' : '#999'; }
+    const isEl = document.getElementById('inner-state-status');
+    if(isEl) { isEl.innerText = db.innerStateOn ? '开启' : '关闭'; isEl.style.color = db.innerStateOn ? 'var(--wechat-green)' : '#999'; }
     const notifyEl = document.getElementById('notify-status');
     if(notifyEl) { notifyEl.innerText = db.notifyOn ? '开启' : '关闭'; notifyEl.style.color = db.notifyOn ? 'var(--wechat-green)' : '#999'; }
 
@@ -381,7 +384,11 @@ async function fetchAI(isAuto = false) {
 ${char.memory ? '【角色记忆】:\n' + char.memory + '\n' : ''}${char.innerState ? '【当前状态/心声】（仅供参考，绝对不要在消息中描述动作或心声）:\n' + char.innerState + '\n' : ''}${timeCtx ? timeCtx + '\n【时间要求】请根据当前时间自然聊天，不要提出与时间不符的事情（如下午4点不要问吃饭了吗）。\n' : ''}${activeWI ? '规则:' + activeWI + '\n' : ''}
 【绝对禁止】不能用括号()【】*等符号描述动作、神态、心情，只能发纯文字消息，就像真实发微信一样。
 【记忆要求】仔细阅读上方记忆区和完整聊天记录，不要重复询问用户已经说过的事情，不要忘记之前聊过的内容。
-【回复格式】每次拆成1~3条简短消息，每条不超过25个字，每条单独一行。`
+${db.innerStateOn ? `【回复格式】必须严格按以下格式输出，不能有任何多余内容：
+MESSAGES:
+（每条消息单独一行，1~3条，每条不超过25个字）
+INNERSTATE:
+（用第一人称写此刻内心状态，30字以内）` : `【回复格式】每次拆成1~3条简短消息，每条不超过25个字，每条单独一行。`}`
                     }, 
                     ...historyMsgs
                 ] 
@@ -402,7 +409,18 @@ ${char.memory ? '【角色记忆】:\n' + char.memory + '\n' : ''}${char.innerSt
         }
 
         const full = data.choices[0].message.content;
-        parts = full.split('\n').map(s=>s.trim()).filter(s=>s.length>0);
+        if(db.innerStateOn && full.includes('MESSAGES:') && full.includes('INNERSTATE:')) {
+            const msgSection = full.split('INNERSTATE:')[0].replace('MESSAGES:', '').trim();
+            const stateSection = full.split('INNERSTATE:')[1].trim();
+            parts = msgSection.split('\n').map(s=>s.trim()).filter(s=>s.length>0);
+            // 更新心声到角色数据
+            if(stateSection) {
+                const charObj = db.c.find(x=>x.id==tid);
+                if(charObj) { charObj.innerState = stateSection; commit(); }
+            }
+        } else {
+            parts = full.split('\n').map(s=>s.trim()).filter(s=>s.length>0);
+        }
 
     } catch(e) {
         removeTyping();
@@ -445,9 +463,6 @@ ${char.memory ? '【角色记忆】:\n' + char.memory + '\n' : ''}${char.innerSt
     // 记录 API 调用次数
     if(!db.apiCallCount) db.apiCallCount = {};
     db.apiCallCount[tid] = (db.apiCallCount[tid] || 0) + 1;
-
-    // 后台静默自动更新角色心声
-    autoUpdateInnerState(tid);
 
     if(isAuto) resetTimer(tid);
 
@@ -512,8 +527,6 @@ function renderWL() {
 }
 
 async function autoUpdateInnerState(tid) {
-    // 每3次AI回复更新一次心声，避免太频繁
-    if(!db.apiCallCount || (db.apiCallCount[tid] % 3 !== 0)) return;
     if(!db.api.u || !db.api.k) return;
     const char = db.c.find(x=>x.id==tid);
     if(!char) return;
@@ -597,9 +610,8 @@ function openCharEdit(id = null) {
         <div class="input-group"><span class="input-label">设定</span><textarea id="i-p" class="input-item" style="height:60px">${char.p}</textarea></div>
         <div class="input-group"><span class="input-label">背景图 URL</span><input id="i-bg" class="input-item" value="${char.bg||''}"></div>
         <div class="input-group">
-            <span class="input-label">💭 当前状态/心声（AI知道但不会发出来）</span>
-            <textarea id="i-innerState" class="input-item" style="height:60px; font-size:13px; color:#555;" placeholder="例如：正在批改试卷，有点烦躁，但看到用户消息会开心">${char.innerState||''}</textarea>
-            <button onclick="aiGenInnerState(${char.id||'null'})" style="margin-top:6px; width:100%; height:30px; background:#f0f0f0; border:1px solid #ccc; border-radius:4px; font-size:12px; color:#555; cursor:pointer;">✨ AI根据聊天记录生成心声</button>
+            <span class="input-label">💭 心声</span>
+            <textarea id="i-innerState" class="input-item" style="height:60px; font-size:13px; color:#555;" placeholder="暂无">${char.innerState||''}</textarea>
         </div>
         <div class="input-group"><span class="input-label">气泡 CSS</span><input id="i-css" class="input-item" value="${char.css||''}"></div>
 
@@ -727,6 +739,15 @@ async function manualSummary(id) {
     }
 }
 
+function clearChatHistory(id) {
+    if(confirm('确定清空聊天记录吗？')) {
+        db.m[id] = [];
+        if(db.apiCallCount) db.apiCallCount[id] = 0;
+        commit();
+        hideModal();
+        if(curChatId == id) renderChat();
+    }
+}
 function deleteChar(id) { if(confirm('确定删除吗？')) { db.c=db.c.filter(x=>x.id!=id); delete db.m[id]; db.mo=db.mo.filter(m=>m.uid!=id); commit(); hideModal(); goBack(); } }
 
 function editMe() {
@@ -813,6 +834,7 @@ function importData() {
 }
 
 function toggleTimeAware() { db.timeAware = !db.timeAware; commit(); }
+function toggleInnerState() { db.innerStateOn = !db.innerStateOn; commit(); }
 async function toggleNotify() {
     if (!db.notifyOn) {
         if (!("Notification" in window)) { alert("此浏览器不支持通知"); return; }
