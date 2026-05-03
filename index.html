@@ -357,12 +357,11 @@ async function fetchAI(isAuto = false) {
         if(curChatId == tid) showTyping(char);
         const base = db.api.u.replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '');
         // 去掉模型名里可能含有的前缀标签，如 [按次]、[免费] 等
-        const modelName = (db.api.model || "gpt-3.5-turbo").replace(/^\[.*?\]\s*/, "").trim();
+        const modelName = db.api.model || "gpt-3.5-turbo";
         const res = await fetch(`${base}/chat/completions`, {
             method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${db.api.k}`},
             body:JSON.stringify({ 
                 model: modelName,
-                stream: false,
                 messages:[
                     {
                         role:"system",
