@@ -345,12 +345,14 @@ async function fetchAI(isAuto = false) {
     if(curChatId == tid) showTyping(char);
     const timeCtx = db.timeAware ? getTimeContext(tid) : "";
 
+    let parts = [];
     try {
         const base = db.api.u.replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '');
         const res = await fetch(`${base}/chat/completions`, {
             method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${db.api.k}`},
             body:JSON.stringify({ 
-                model: db.api.model || "gpt-3.5-turbo", 
+                model: db.api.model || "gpt-3.5-turbo",
+                stream: false,
                 messages:[
                     {
                         role:"system",
@@ -360,39 +362,69 @@ async function fetchAI(isAuto = false) {
                 ] 
             })
         });
-        const data = await res.json();
+
+        let data;
+        try {
+            data = await res.json();
+        } catch(jsonErr) {
+            throw new Error("API 返回格式错误，请确认接口地址正确且未开启 stream 模式");
+        }
+
+        if(!data.choices || !data.choices[0] || !data.choices[0].message) {
+            throw new Error(data.error?.message || "API 返回数据异常");
+        }
+
         const full = data.choices[0].message.content;
-        const parts = full.split('\n').map(s=>s.trim()).filter(s=>s.length>0);
-        
-        parts.forEach(p => db.m[tid].push({ r:'ai', c:p, t:Date.now() }));
-        removeTyping();
+        parts = full.split('\n').map(s=>s.trim()).filter(s=>s.length>0);
 
-        if (db.notifyOn && "Notification" in window && Notification.permission === "granted") {
-            if (document.hidden || curChatId != tid) {
-                let notifyText = parts.join(' ');
-                if(notifyText.includes('http')) notifyText = '[图片消息]';
-                new Notification(char.n, { body: notifyText, icon: char.a });
-            }
-        }
-
-        // 记录 API 调用次数
-        if(!db.apiCallCount) db.apiCallCount = {};
-        db.apiCallCount[tid] = (db.apiCallCount[tid] || 0) + 1;
-
-        commit(); if(curChatId==tid) renderChat();
-        if(isAuto) resetTimer(tid);
-
-        // 检查自动总结（按 API 调用次数）
-        const charForSummary = db.c.find(x => x.id == tid);
-        if (charForSummary && charForSummary.autoSummary) {
-            const sCount = parseInt(charForSummary.summaryCount) || 20;
-            if (db.apiCallCount[tid] % sCount === 0) {
-                autoSummary(tid);
-            }
-        }
     } catch(e) {
         removeTyping();
         console.error(e);
+        alert("AI 回复失败：" + e.message);
+        return;
+    }
+
+    // 逐条发送消息，每条之间加延迟，模拟真实打字节奏
+    for(let i = 0; i < parts.length; i++) {
+        if(i === 0) removeTyping();
+        else {
+            // 中间条：先显示输入中，再过渡到消息
+            if(curChatId == tid) showTyping(char);
+            await new Promise(r => setTimeout(r, 800 + Math.random() * 700));
+            if(curChatId == tid) removeTyping();
+        }
+
+        db.m[tid].push({ r:'ai', c:parts[i], t:Date.now() });
+        commit();
+        if(curChatId == tid) renderChat();
+
+        // 如果不是最后一条，等一下再发下一条
+        if(i < parts.length - 1) {
+            await new Promise(r => setTimeout(r, 400 + Math.random() * 400));
+        }
+    }
+
+    if (db.notifyOn && "Notification" in window && Notification.permission === "granted") {
+        if (document.hidden || curChatId != tid) {
+            let notifyText = parts.join(' ');
+            if(notifyText.includes('http')) notifyText = '[图片消息]';
+            new Notification(char.n, { body: notifyText, icon: char.a });
+        }
+    }
+
+    // 记录 API 调用次数
+    if(!db.apiCallCount) db.apiCallCount = {};
+    db.apiCallCount[tid] = (db.apiCallCount[tid] || 0) + 1;
+
+    if(isAuto) resetTimer(tid);
+
+    // 检查自动总结（按 API 调用次数）
+    const charForSummary = db.c.find(x => x.id == tid);
+    if (charForSummary && charForSummary.autoSummary) {
+        const sCount = parseInt(charForSummary.summaryCount) || 20;
+        if (db.apiCallCount[tid] % sCount === 0) {
+            autoSummary(tid);
+        }
     }
 }
 
