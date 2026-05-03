@@ -192,7 +192,32 @@ let curChatId = null;
 let isSimMode = false;
 let timers = {};
 
-// ── 无声音频保活 ──────────────────────────────────────────
+// ── Service Worker 注册 ───────────────────────────────────
+let _swReg = null;
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').then(reg => {
+        _swReg = reg;
+        console.log('SW 注册成功');
+    }).catch(e => console.log('SW 注册失败:', e));
+}
+
+// 通过 SW 发通知（能在后台弹出），降级用普通 Notification
+function sendNotification(title, body, icon) {
+    if (_swReg && Notification.permission === 'granted') {
+        _swReg.showNotification(title, {
+            body: body,
+            icon: icon || '',
+            badge: icon || '',
+            vibrate: [200, 100, 200],
+            tag: 'chat-notify',
+            renotify: true,
+        });
+    } else if (Notification.permission === 'granted') {
+        try { new Notification(title, { body, icon }); } catch(e) {}
+    }
+}
+
+// ── 无声音频保活 + Media Session（通知栏显示播放状态）──────
 let _keepAliveCtx = null;
 let _keepAliveShouldRun = false;
 
@@ -204,14 +229,29 @@ function _startAudioCtx() {
         }
         _keepAliveCtx = new (window.AudioContext || window.webkitAudioContext)();
         const gain = _keepAliveCtx.createGain();
-        gain.gain.value = 0;
+        gain.gain.value = 0; // 完全静音
         const osc = _keepAliveCtx.createOscillator();
         osc.frequency.value = 440;
         osc.connect(gain);
         gain.connect(_keepAliveCtx.destination);
         osc.start();
+
+        // Media Session：让通知栏出现"正在播放"条目，阻止系统冻结页面
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.metadata = new MediaMetadata({
+                title: '三分糖小手机',
+                artist: '后台运行中',
+                album: '消息通知保活',
+            });
+            navigator.mediaSession.playbackState = 'playing';
+            // 屏蔽媒体控制按钮（避免用户误操作）
+            ['play','pause','stop','seekbackward','seekforward','previoustrack','nexttrack'].forEach(action => {
+                try { navigator.mediaSession.setActionHandler(action, () => {}); } catch(e) {}
+            });
+        }
     } catch(e) { console.log('保活启动失败:', e); }
 }
+
 function startKeepAlive() {
     _keepAliveShouldRun = true;
     _startAudioCtx();
@@ -219,6 +259,7 @@ function startKeepAlive() {
 function stopKeepAlive() {
     _keepAliveShouldRun = false;
     try { if (_keepAliveCtx) { _keepAliveCtx.close(); _keepAliveCtx = null; } } catch(e) {}
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'none';
 }
 function syncKeepAlive() {
     if (db.notifyOn) startKeepAlive(); else stopKeepAlive();
@@ -531,9 +572,7 @@ INNERSTATE:
     if (db.notifyOn && "Notification" in window && Notification.permission === "granted") {
         let notifyText = parts[parts.length - 1] || parts.join(' ');
         if(isImg(notifyText)) notifyText = '[图片消息]';
-        try {
-            new Notification(char.n, { body: notifyText, icon: char.a || '' });
-        } catch(e) { console.log('通知失败', e); }
+        sendNotification(char.n, notifyText, char.a || '');
     }
 
     // 记录 API 调用次数
@@ -934,7 +973,7 @@ async function toggleNotify() {
         const perm = await Notification.requestPermission();
         if (perm !== "granted") { alert("未获得通知权限，无法开启"); return; }
         db.notifyOn = true;
-        alert("通知已开启！已启动后台保活（Android 有效，iOS 受限）。");
+        alert("通知已开启！已启动后台保活。");
     } else {
         db.notifyOn = false;
     }
