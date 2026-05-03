@@ -857,7 +857,7 @@ async function manualSummary(id) {
         const data = await res.json();
         const summary = data.choices[0].message.content.trim();
         const timestamp = new Date().toLocaleString('zh-CN', {month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
-        char.memory = (char.memory ? char.memory + '\n\n' : '') + `【${timestamp} 手动总结】\n${summary}`;
+        char.memory = (char.memory ? char.memory + '\n\n' : '') + `【${timestamp} 总结】\n${summary}`;
         commit();
 
         // 刷新弹窗内的记忆区文本框（如果当前弹窗还开着）
