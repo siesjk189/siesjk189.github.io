@@ -258,7 +258,18 @@ async function generateAIMoments() {
         const lastChat = history.slice(-10).map(h => `${h.r==='user'?'用户':'角色'}:${h.c}`).join('\n');
         
         try {
-            const base = db.api.u.replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '');
+          // 合并连续AI消息，取最近30条作为上下文
+        const historyMsgs = [];
+        for(const h of history.slice(-30)) {
+            const role = h.r === 'user' ? 'user' : 'assistant';
+            if(historyMsgs.length > 0 && historyMsgs[historyMsgs.length-1].role === role) {
+                historyMsgs[historyMsgs.length-1].content += '\n' + h.c;
+            } else {
+                historyMsgs.push({ role, content: h.c });
+            }
+        }
+
+        const base = db.api.u.replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '');
             const res = await fetch(`${base}/chat/completions`, {
                 method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${db.api.k}`},
                 body:JSON.stringify({ 
@@ -369,9 +380,10 @@ async function fetchAI(isAuto = false) {
 性格设定:${char.p}
 ${char.memory ? '【角色记忆】:\n' + char.memory + '\n' : ''}${char.innerState ? '【当前状态/心声】（仅供参考，绝对不要在消息中描述动作或心声）:\n' + char.innerState + '\n' : ''}${timeCtx ? timeCtx + '\n【时间要求】请根据当前时间自然聊天，不要提出与时间不符的事情（如下午4点不要问吃饭了吗）。\n' : ''}${activeWI ? '规则:' + activeWI + '\n' : ''}
 【绝对禁止】不能用括号()【】*等符号描述动作、神态、心情，只能发纯文字消息，就像真实发微信一样。
+【记忆要求】仔细阅读上方记忆区和完整聊天记录，不要重复询问用户已经说过的事情，不要忘记之前聊过的内容。
 【回复格式】每次拆成1~3条简短消息，每条不超过25个字，每条单独一行。`
                     }, 
-                    ...history.slice(-10).map(h=>({role:h.r==='user'?'user':'assistant',content:h.c}))
+                    ...historyMsgs
                 ] 
             })
         });
@@ -420,16 +432,22 @@ ${char.memory ? '【角色记忆】:\n' + char.memory + '\n' : ''}${char.innerSt
     }
 
     if (db.notifyOn && "Notification" in window && Notification.permission === "granted") {
-        if (document.hidden || curChatId != tid) {
-            let notifyText = parts.join(' ');
+        // 切到后台时发通知
+        if (document.hidden) {
+            let notifyText = parts[parts.length - 1] || parts.join(' ');
             if(notifyText.includes('http')) notifyText = '[图片消息]';
-            new Notification(char.n, { body: notifyText, icon: char.a });
+            try {
+                new Notification(char.n, { body: notifyText, icon: char.a || '' });
+            } catch(e) { console.log('通知失败', e); }
         }
     }
 
     // 记录 API 调用次数
     if(!db.apiCallCount) db.apiCallCount = {};
     db.apiCallCount[tid] = (db.apiCallCount[tid] || 0) + 1;
+
+    // 后台静默自动更新角色心声
+    autoUpdateInnerState(tid);
 
     if(isAuto) resetTimer(tid);
 
@@ -460,10 +478,10 @@ function updateSimUI() {
 function handleSend() {
     const input = document.getElementById('chat-in');
     const val = input.value.trim();
-    if(!val) { fetchAI(); return; }
+    if(!val) { fetchAI(); return; } // 输入为空时直接调用AI
     db.m[curChatId].push({ r: isSimMode ? 'ai' : 'user', c: val, t: Date.now() });
     input.value = ""; renderChat(); commit();
-    if (!isSimMode) fetchAI();
+    if (!isSimMode) fetchAI(); // 有内容时发送后也触发AI
 }
 
 function renderChat() {
@@ -491,6 +509,63 @@ function renderWL() {
             <p onclick="db.w.splice(${i},1);renderWL();" style="color:red;text-align:right;cursor:pointer;">删除</p>
         </div>
     `).join('');
+}
+
+async function autoUpdateInnerState(tid) {
+    // 每3次AI回复更新一次心声，避免太频繁
+    if(!db.apiCallCount || (db.apiCallCount[tid] % 3 !== 0)) return;
+    if(!db.api.u || !db.api.k) return;
+    const char = db.c.find(x=>x.id==tid);
+    if(!char) return;
+    const history = (db.m[tid] || []).slice(-20).map(h=>`${h.r==='user'?'用户':char.n}:${h.c}`).join('\n');
+    if(!history) return;
+    try {
+        const base = db.api.u.replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '');
+        const res = await fetch(`${base}/chat/completions`, {
+            method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${db.api.k}`},
+            body:JSON.stringify({ model: db.api.model, messages:[
+                { role:'system', content:`根据以下聊天记录，用第一人称为角色${char.n}写当前的心理状态，30字以内，只输出内容本身，不加任何前缀。` },
+                { role:'user', content: history }
+            ]})
+        });
+        const data = await res.json();
+        const result = data.choices?.[0]?.message?.content?.trim();
+        if(result) {
+            char.innerState = result;
+            commit();
+        }
+    } catch(e) { /* 静默失败 */ }
+}
+
+async function aiGenInnerState(charId) {
+    if(!db.api.u || !db.api.k) { alert("请先配置API"); return; }
+    const id = charId || null;
+    const char = id ? db.c.find(x=>x.id==id) : null;
+    if(!char) { alert("请先保存角色后再生成"); return; }
+    const history = (db.m[id] || []).slice(-20).map(h=>`${h.r==='user'?'用户':char.n}:${h.c}`).join('\n');
+    if(!history) { alert("暂无聊天记录，请先和角色聊几句"); return; }
+
+    const btn = event && event.target ? event.target : null;
+    if(btn) { btn.innerText = "生成中..."; btn.disabled = true; }
+
+    try {
+        const base = db.api.u.replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '');
+        const res = await fetch(`${base}/chat/completions`, {
+            method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${db.api.k}`},
+            body:JSON.stringify({ model: db.api.model, messages:[
+                { role:'system', content:`根据以下聊天记录，用第一人称为角色${char.n}写一段当前的心理状态和内心活动，50字以内，不要分行，只输出内容本身。` },
+                { role:'user', content: history }
+            ]})
+        });
+        const data = await res.json();
+        const result = data.choices[0].message.content.trim();
+        const el = document.getElementById('i-innerState');
+        if(el) el.value = result;
+    } catch(e) {
+        alert("生成失败：" + e.message);
+    } finally {
+        if(btn) { btn.innerText = "✨ AI根据聊天记录生成心声"; btn.disabled = false; }
+    }
 }
 
 function openCharEdit(id = null) {
@@ -524,6 +599,7 @@ function openCharEdit(id = null) {
         <div class="input-group">
             <span class="input-label">💭 当前状态/心声（AI知道但不会发出来）</span>
             <textarea id="i-innerState" class="input-item" style="height:60px; font-size:13px; color:#555;" placeholder="例如：正在批改试卷，有点烦躁，但看到用户消息会开心">${char.innerState||''}</textarea>
+            <button onclick="aiGenInnerState(${char.id||'null'})" style="margin-top:6px; width:100%; height:30px; background:#f0f0f0; border:1px solid #ccc; border-radius:4px; font-size:12px; color:#555; cursor:pointer;">✨ AI根据聊天记录生成心声</button>
         </div>
         <div class="input-group"><span class="input-label">气泡 CSS</span><input id="i-css" class="input-item" value="${char.css||''}"></div>
 
@@ -739,10 +815,15 @@ function importData() {
 function toggleTimeAware() { db.timeAware = !db.timeAware; commit(); }
 async function toggleNotify() {
     if (!db.notifyOn) {
-        if (!("Notification" in window)) return;
-        if (Notification.permission !== "granted") await Notification.requestPermission();
+        if (!("Notification" in window)) { alert("此浏览器不支持通知"); return; }
+        if (Notification.permission === "denied") { alert("通知权限已被拒绝，请在浏览器设置里手动开启"); return; }
+        const perm = await Notification.requestPermission();
+        if (perm !== "granted") { alert("未获得通知权限，无法开启"); return; }
         db.notifyOn = true;
-    } else db.notifyOn = false;
+        alert("通知已开启！切到后台后AI回复会推送通知。");
+    } else {
+        db.notifyOn = false;
+    }
     commit();
 }
 
