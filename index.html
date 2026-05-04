@@ -88,14 +88,42 @@
             <div id="contacts-list"></div>
         </div>
         <div id="p-moments" class="page">
-            <div id="mo-cover">
-                <div class="mo-user-info">
-                    <span id="mo-name" class="mo-u-name"></span>
-                    <img id="mo-avatar" class="mo-u-avatar">
+            <!-- 娱乐主页 -->
+            <div id="entertainment-hub" style="padding:16px;">
+                <div onclick="openMomentsPage()" style="display:flex;align-items:center;background:#fff;border-radius:12px;padding:18px 16px;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);cursor:pointer;">
+                    <div>
+                        <div style="font-weight:bold;font-size:16px;color:#333;">朋友圈</div>
+                        <div style="font-size:12px;color:#999;margin-top:3px;">查看好友动态，AI生成朋友圈</div>
+                    </div>
+                    <div style="margin-left:auto;color:#ccc;font-size:20px;">›</div>
+                </div>
+                <div onclick="openNovelPage()" style="display:flex;align-items:center;background:#fff;border-radius:12px;padding:18px 16px;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);cursor:pointer;">
+                    <div>
+                        <div style="font-weight:bold;font-size:16px;color:#333;">看小说</div>
+                        <div style="font-size:12px;color:#999;margin-top:3px;">AI随机生成书单，和角色一起读</div>
+                    </div>
+                    <div style="margin-left:auto;color:#ccc;font-size:20px;">›</div>
                 </div>
             </div>
-            <div class="cell" onclick="postMoment()" style="justify-content:center; color:var(--link-color); font-weight:500;"> 手动发布动态</div>
-            <div id="moments-list"></div>
+        </div>
+
+        <!-- 朋友圈独立页面 -->
+        <div id="p-moments-inner" style="display:none; position:absolute; inset:0; background:var(--bg-color); z-index:500; flex-direction:column; overflow:hidden;">
+            <div class="nav" style="flex-shrink:0;">
+                <div class="back-btn" onclick="closeMomentsPage()">‹ 返回</div>
+                <div class="nav-title">朋友圈</div>
+                <div class="nav-action" onclick="generateAIMoments()">✨ 自动生成</div>
+            </div>
+            <div style="flex:1;overflow-y:auto;">
+                <div id="mo-cover">
+                    <div class="mo-user-info">
+                        <span id="mo-name" class="mo-u-name"></span>
+                        <img id="mo-avatar" class="mo-u-avatar">
+                    </div>
+                </div>
+                <div class="cell" onclick="postMoment()" style="justify-content:center; color:var(--link-color); font-weight:500;"> 手动发布动态</div>
+                <div id="moments-list"></div>
+            </div>
         </div>
         <div id="p-me" class="page">
             <div class="cell" onclick="editMe()"><img id="me-avatar" class="avatar"><b id="me-name"></b></div>
@@ -127,11 +155,64 @@
     <div class="tab-bar">
         <div class="tab-item active" onclick="showTab('msg',this)">♡信息</div>
         <div class="tab-item" onclick="showTab('contacts',this)">♤好友</div>
-        <div class="tab-item" onclick="showTab('moments',this)">♧朋友圈</div>
+        <div class="tab-item" onclick="showTab('moments',this)">♧娱乐</div>
         <div class="tab-item" onclick="showTab('me',this)">♢我</div>
     </div>
 
-    <div id="chat-room">
+    <!-- 小说列表页面 -->
+    <div id="novel-room" style="position:absolute;inset:0;background:#f5f5f5;z-index:1500;display:none;flex-direction:column;">
+        <div class="nav" style="padding:0 12px;">
+            <div class="back-btn" onclick="closeNovelPage()">‹ 返回</div>
+            <div class="nav-title">看小说</div>
+            <!-- 右侧按钮区：伴读头像（圆角方形）+ 换一换 -->
+            <div style="position:absolute;right:12px;display:flex;align-items:center;gap:8px;">
+                <div id="novel-companion-btn" onclick="openCompanionPicker()" title="选择一起看小说的角色"
+                     style="width:30px;height:30px;border-radius:6px;background:#ddd center/cover no-repeat;cursor:pointer;border:1.5px solid #ccc;font-size:13px;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;"></div>
+                <div onclick="refreshNovels()" style="font-size:12px;color:var(--link-color);cursor:pointer;background:#e8e8e8;padding:5px 9px;border-radius:10px;white-space:nowrap;">换一换</div>
+            </div>
+        </div>
+        <!-- 标签搜索框 -->
+        <div id="novel-search-bar" style="padding:10px 12px;background:#fff;border-bottom:0.5px solid #eee;flex-shrink:0;">
+            <div style="display:flex;gap:8px;align-items:center;">
+                <input id="novel-tag-input" type="text" placeholder="输入想看的标签，如：古风 甜宠 悬疑..." style="flex:1;border:1px solid #ddd;border-radius:20px;padding:7px 14px;font-size:13px;outline:none;background:#f7f7f7;">
+                <button onclick="searchNovelsByTag()" style="flex-shrink:0;border:none;background:var(--wechat-green);color:#fff;border-radius:20px;padding:7px 14px;font-size:13px;cursor:pointer;white-space:nowrap;">搜索</button>
+            </div>
+        </div>
+        <!-- 标签切换：书单 / 收藏 -->
+        <div style="display:flex;border-bottom:0.5px solid #ddd;background:#fff;flex-shrink:0;">
+            <div id="novel-tab-list" onclick="switchNovelTab('list')" style="flex:1;text-align:center;padding:10px 0;font-size:14px;font-weight:bold;color:var(--wechat-green);border-bottom:2px solid var(--wechat-green);cursor:pointer;">书单</div>
+            <div id="novel-tab-fav" onclick="switchNovelTab('fav')" style="flex:1;text-align:center;padding:10px 0;font-size:14px;color:#888;border-bottom:2px solid transparent;cursor:pointer;">收藏夹</div>
+        </div>
+        <div id="novel-list-area" style="flex:1;overflow-y:auto;padding:12px;"></div>
+        <!-- 加载中遮罩 -->
+        <div id="novel-loading" style="display:none;position:absolute;inset:0;background:rgba(255,255,255,0.9);z-index:100;align-items:center;justify-content:center;flex-direction:column;gap:12px;">
+            <div style="font-size:28px;">📚</div>
+            <div style="color:#666;font-size:14px;">正在生成书单...</div>
+        </div>
+    </div>
+
+    <!-- 单本小说阅读页面 -->
+    <div id="novel-detail-room" style="position:absolute;inset:0;background:#fff;z-index:1600;display:none;flex-direction:column;">
+        <div class="nav">
+            <div class="back-btn" onclick="closeNovelDetail()">‹ 返回</div>
+            <div id="novel-detail-title" class="nav-title" style="max-width:55%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
+            <div id="novel-fav-btn" onclick="toggleNovelFavorite()" style="position:absolute;right:15px;cursor:pointer;font-size:22px;line-height:48px;color:#f5a623;" title="收藏">☆</div>
+        </div>
+        <div id="novel-detail-area" style="flex:1;overflow-y:auto;padding:16px;"></div>
+    </div>
+
+    <!-- 角色选择器弹窗 -->
+    <div id="companion-picker" style="position:absolute;inset:0;background:rgba(0,0,0,0.5);z-index:2000;display:none;align-items:flex-end;justify-content:center;">
+        <div style="background:#fff;border-radius:16px 16px 0 0;width:100%;max-height:70%;display:flex;flex-direction:column;">
+            <div style="padding:14px 16px;border-bottom:0.5px solid #eee;display:flex;justify-content:space-between;align-items:center;">
+                <span style="font-weight:bold;font-size:15px;">和谁一起看？</span>
+                <span onclick="closeCompanionPicker()" style="color:#999;cursor:pointer;font-size:22px;">×</span>
+            </div>
+            <div id="companion-list" style="overflow-y:auto;flex:1;padding:8px 0;"></div>
+        </div>
+    </div>
+
+    <div id="chat-room" style="position:absolute;inset:0;background:var(--bg-color);z-index:2000;display:none;flex-direction:column;">
         <div class="nav">
             <div class="back-btn" onclick="goBack()">‹ 返回</div>
             <div id="chat-title" class="nav-title"></div>
@@ -182,11 +263,23 @@
 
 <script>
 const DB_KEY = "ST_V66_MOMENTS_AI";
-let db = JSON.parse(localStorage.getItem(DB_KEY)) || {
-    u: { n:'用户', a:'', p:'', bg:'', css:'' },
-    c: [], m: {}, mo: [], w: [], s: [], api: { u:'', k:'', model:'' }, g_css: '', timeAware: false, notifyOn: false, innerStateOn: false,
-    apiCallCount: {}  // 记录每个角色的 API 调用次数，用于自动总结触发
-};
+const DEFAULT_CHARS = [
+    
+];
+
+let db = JSON.parse(localStorage.getItem(DB_KEY)) || (() => {
+    const defaultM = {};
+    DEFAULT_CHARS.forEach(c => { defaultM[c.id] = []; });
+    return {
+        u: { n:'用户', a:'', p:'', bg:'', css:'' },
+        c: DEFAULT_CHARS.map(c => ({...c})),
+        m: defaultM,
+        mo: [], w: DEFAULT_WORLD.map(w => ({...w})), s: [],
+        api: { u:'', k:'', model:'' },
+        g_css: '', timeAware: false, notifyOn: false, innerStateOn: false,
+        apiCallCount: {}
+    };
+})();
 
 let curChatId = null;
 let isSimMode = false;
@@ -989,11 +1082,11 @@ function showTab(t, el) {
     
     const navTitle = document.getElementById('nav-title');
     const navExtra = document.getElementById('nav-extra');
-    navTitle.innerText = {msg:'信息', contacts:'好友', moments:'朋友圈', me:'我'}[t];
+    navTitle.innerText = {msg:'信息', contacts:'好友', moments:'娱乐', me:'我'}[t];
     
-    // 朋友圈界面显示 AI 生成按钮
+    // 娱乐界面不显示额外按钮
     if(t === 'moments') {
-        navExtra.innerHTML = `<div class="nav-action" onclick="generateAIMoments()">✨ 自动生成</div>`;
+        navExtra.innerHTML = '';
     } else {
         navExtra.innerHTML = '';
     }
@@ -1045,6 +1138,542 @@ function closeDisclaimer() {
     document.getElementById('disclaimer-box').style.display = 'none';
     localStorage.setItem('ST_DISCLAIMER_OK', '1');
 }
+
+// ───────── 朋友圈子页面导航 ─────────
+function openMomentsPage() {
+    const inner = document.getElementById('p-moments-inner');
+    inner.style.display = 'flex';
+    render();
+}
+function closeMomentsPage() {
+    document.getElementById('p-moments-inner').style.display = 'none';
+}
+
+// ───────── 小说功能 ─────────
+// novelData: { books: [{title, tags, summary}] } — 持久化到 db.novelData
+// db.novelFavorites: { [bookKey]: { bookInfo, chapters: [{title, chapter, annotations}], progress: chapterIndex } }
+// novelCompanionId: 持久化到 db.novelCompanionId
+
+let currentNovelIndex = null;
+let currentChapterIndex = 0;
+let novelCurrentTab = 'list'; // 'list' | 'fav'
+let novelChapterTempCache = {}; // key: bookKey+chIdx -> chData (临时缓存，未收藏时使用)
+
+// 从 db 中取伴读ID，保持持久化
+function getNovelCompanionId() { return db.novelCompanionId !== undefined ? db.novelCompanionId : null; }
+
+function openNovelPage() {
+    document.getElementById('novel-room').style.display = 'flex';
+    updateCompanionBtn();
+    novelCurrentTab = 'list';
+    switchNovelTab('list');
+    // 如果已有书单数据则直接渲染，不重新生成
+    if (!db.novelData || !db.novelData.books || db.novelData.books.length === 0) {
+        generateNovels();
+    } else {
+        renderNovelList();
+    }
+}
+
+function closeNovelPage() {
+    document.getElementById('novel-room').style.display = 'none';
+}
+
+function switchNovelTab(tab) {
+    novelCurrentTab = tab;
+    const tabList = document.getElementById('novel-tab-list');
+    const tabFav  = document.getElementById('novel-tab-fav');
+    if (tab === 'list') {
+        tabList.style.color = 'var(--wechat-green)'; tabList.style.borderBottom = '2px solid var(--wechat-green)';
+        tabFav.style.color = '#888'; tabFav.style.borderBottom = '2px solid transparent';
+        renderNovelList();
+    } else {
+        tabFav.style.color = 'var(--wechat-green)'; tabFav.style.borderBottom = '2px solid var(--wechat-green)';
+        tabList.style.color = '#888'; tabList.style.borderBottom = '2px solid transparent';
+        renderFavoriteList();
+    }
+}
+
+function updateCompanionBtn() {
+    const btn = document.getElementById('novel-companion-btn');
+    if (!btn) return;
+    const cid = getNovelCompanionId();
+    const char = cid !== null ? db.c.find(c => c.id === cid) : null;
+    if (char) {
+        // 有选择角色：显示角色头像
+        if (char.a) {
+            btn.style.backgroundImage = `url(${char.a})`;
+            btn.innerHTML = '';
+        } else {
+            btn.style.backgroundImage = 'none';
+            btn.innerHTML = `<span style="font-size:11px;color:#555;font-weight:bold;">${char.n.charAt(0)}</span>`;
+        }
+    } else {
+        // 未选择角色：显示用户自己的头像
+        if (db.u && db.u.a) {
+            btn.style.backgroundImage = `url(${db.u.a})`;
+            btn.innerHTML = '';
+        } else {
+            btn.style.backgroundImage = 'none';
+            btn.innerHTML = `<span style="font-size:11px;color:#999;">我</span>`;
+        }
+    }
+}
+
+async function generateNovels() {
+    if (!db.api.u || !db.api.k) { alert("请先在'我'界面配置 API 接口和密钥"); return; }
+    const loading = document.getElementById('novel-loading');
+    loading.style.display = 'flex';
+    try {
+        const base = db.api.u.replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '');
+        const res = await fetch(`${base}/chat/completions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${db.api.k}` },
+            body: JSON.stringify({
+                model: db.api.model || 'gpt-3.5-turbo',
+                max_tokens: 1500,
+                messages: [{
+                    role: 'user',
+                    content: `请随机生成6本虚构小说的信息，风格各异，每本包含书名、标签（2-3个）、简介（50字左右）、以及该小说的章节目录（5章，每章标题）。请严格按照以下JSON格式返回，不要有任何其他内容：{"books":[{"title":"书名","tags":["标签1","标签2"],"summary":"简介","chapters":["第一章 章节名","第二章 章节名","第三章 章节名","第四章 章节名","第五章 章节名"]}]}`
+                }]
+            })
+        });
+        const data = await res.json();
+        let text = data.choices[0].message.content.trim().replace(/```json|```/g, '').trim();
+        const parsed = JSON.parse(text);
+        db.novelData = parsed;
+        if (!db.novelFavorites) db.novelFavorites = {};
+        novelChapterTempCache = {};
+        commit();
+        renderNovelList();
+    } catch(e) {
+        alert('生成失败：' + e.message);
+    } finally {
+        loading.style.display = 'none';
+    }
+}
+
+function refreshNovels() {
+    db.novelData = null;
+    novelChapterTempCache = {};
+    commit();
+    generateNovels();
+}
+
+async function searchNovelsByTag() {
+    const input = document.getElementById('novel-tag-input');
+    const tags = (input ? input.value.trim() : '');
+    if (!tags) { alert('请输入想看的标签'); return; }
+    if (!db.api.u || !db.api.k) { alert("请先在'我'界面配置 API 接口和密钥"); return; }
+    const loading = document.getElementById('novel-loading');
+    loading.style.display = 'flex';
+    loading.querySelector('div:last-child').innerText = '正在按标签搜索...';
+    try {
+        const base = db.api.u.replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '');
+        const res = await fetch(`${base}/chat/completions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${db.api.k}` },
+            body: JSON.stringify({
+                model: db.api.model || 'gpt-3.5-turbo',
+                max_tokens: 1500,
+                messages: [{
+                    role: 'user',
+                    content: `请根据以下标签生成6本符合风格的虚构小说，标签为：${tags}。每本包含书名、标签（2-3个，需包含用户指定的标签）、简介（50字左右）、以及该小说的章节目录（5章，每章标题）。请严格按照以下JSON格式返回，不要有任何其他内容：{"books":[{"title":"书名","tags":["标签1","标签2"],"summary":"简介","chapters":["第一章 章节名","第二章 章节名","第三章 章节名","第四章 章节名","第五章 章节名"]}]}`
+                }]
+            })
+        });
+        const data = await res.json();
+        let text = data.choices[0].message.content.trim().replace(/```json|```/g, '').trim();
+        const parsed = JSON.parse(text);
+        db.novelData = parsed;
+        if (!db.novelFavorites) db.novelFavorites = {};
+        novelChapterTempCache = {};
+        commit();
+        // 切换到书单tab
+        switchNovelTab('list');
+    } catch(e) {
+        alert('搜索失败：' + e.message);
+    } finally {
+        loading.style.display = 'none';
+        loading.querySelector('div:last-child').innerText = '正在生成书单...';
+    }
+}
+
+function getBookKey(book) {
+    // stable key for a book
+    return encodeURIComponent(book.title).slice(0, 50);
+}
+
+function renderNovelList() {
+    if (!db.novelData || !db.novelData.books) return;
+    const area = document.getElementById('novel-list-area');
+    const cid = getNovelCompanionId();
+    const companionChar = cid !== null ? db.c.find(c => c.id === cid) : null;
+    const companionTag = companionChar
+        ? `<span style="font-size:11px;background:#e8f4fd;color:var(--link-color);padding:2px 6px;border-radius:8px;margin-left:4px;">与${companionChar.n}一起读</span>`
+        : '';
+    if (!db.novelFavorites) db.novelFavorites = {};
+    area.innerHTML = db.novelData.books.map((book, i) => {
+        const key = getBookKey(book);
+        const isFav = !!db.novelFavorites[key];
+        const favTag = isFav ? `<span style="font-size:11px;color:#f5a623;">⭐ 已收藏</span>` : '';
+        return `<div onclick="openNovelDetail(${i})" style="background:#fff;border-radius:12px;padding:14px 16px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,0.07);cursor:pointer;">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:5px;">
+                <span style="font-weight:bold;font-size:15px;color:#222;">${book.title}</span>${companionTag}${favTag}
+            </div>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:6px;">
+                ${book.tags.map(t=>`<span style="font-size:11px;background:#f0f0f0;color:#666;padding:2px 7px;border-radius:8px;">#${t.replace(/^#/,'')}</span>`).join('')}
+            </div>
+            <div style="font-size:13px;color:#666;line-height:1.6;">${book.summary}</div>
+            <div style="text-align:right;font-size:12px;color:#ccc;margin-top:4px;">点击进入 ›</div>
+        </div>`;
+    }).join('');
+}
+
+function renderFavoriteList() {
+    const area = document.getElementById('novel-list-area');
+    if (!db.novelFavorites) db.novelFavorites = {};
+    const favs = Object.values(db.novelFavorites);
+    if (favs.length === 0) {
+        area.innerHTML = `<div style="text-align:center;color:#bbb;margin-top:60px;font-size:14px;">暂无收藏的小说</div>`;
+        return;
+    }
+    const cid = getNovelCompanionId();
+    const companionChar = cid !== null ? db.c.find(c => c.id === cid) : null;
+    const companionTag = companionChar
+        ? `<span style="font-size:11px;background:#e8f4fd;color:var(--link-color);padding:2px 6px;border-radius:8px;margin-left:4px;">与${companionChar.n}一起读</span>`
+        : '';
+    area.innerHTML = favs.map((fav, i) => {
+        const book = fav.bookInfo;
+        const progress = fav.progress || 0;
+        const totalChapters = (book.chapters || []).length;
+        const progressText = totalChapters > 0 ? `读至第${progress+1}章` : '';
+        return `<div onclick="openNovelDetailFromFav('${getBookKey(book)}')" style="background:#fff;border-radius:12px;padding:14px 16px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,0.07);cursor:pointer;">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:5px;">
+                <span style="font-weight:bold;font-size:15px;color:#222;">${book.title}</span>${companionTag}
+                <span style="font-size:11px;color:#f5a623;">⭐</span>
+                ${progressText ? `<span style="font-size:11px;color:#999;">${progressText}</span>` : ''}
+            </div>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:6px;">
+                ${book.tags.map(t=>`<span style="font-size:11px;background:#f0f0f0;color:#666;padding:2px 7px;border-radius:8px;">#${t.replace(/^#/,'')}</span>`).join('')}
+            </div>
+            <div style="font-size:13px;color:#666;line-height:1.6;">${book.summary}</div>
+            <div style="text-align:right;font-size:12px;color:var(--link-color);margin-top:4px;">继续阅读 ›</div>
+        </div>`;
+    }).join('');
+}
+
+function openCompanionPicker() {
+    const list = document.getElementById('companion-list');
+    const cid = getNovelCompanionId();
+    list.innerHTML = `
+        <div onclick="selectCompanion(null)" style="display:flex;align-items:center;padding:12px 16px;cursor:pointer;border-bottom:0.5px solid #f0f0f0;">
+            <div style="width:42px;height:42px;border-radius:8px;background:#eee;display:flex;align-items:center;justify-content:center;font-size:22px;margin-right:12px;">👤</div>
+            <span style="font-size:15px;color:#555;">独自阅读</span>
+            ${cid === null ? '<span style="margin-left:auto;color:var(--wechat-green);font-size:18px;">✓</span>' : ''}
+        </div>
+        ${db.c.map(c => `<div onclick="selectCompanion(${c.id})" style="display:flex;align-items:center;padding:12px 16px;cursor:pointer;border-bottom:0.5px solid #f0f0f0;">
+            <img src="${c.a || ''}" style="width:42px;height:42px;border-radius:8px;object-fit:cover;background:#eee;margin-right:12px;" onerror="this.style.background='#ddd';this.src=''">
+            <span style="font-size:15px;">${c.n}</span>
+            ${cid === c.id ? '<span style="margin-left:auto;color:var(--wechat-green);font-size:18px;">✓</span>' : ''}
+        </div>`).join('')}`;
+    document.getElementById('companion-picker').style.display = 'flex';
+}
+
+function closeCompanionPicker() { document.getElementById('companion-picker').style.display = 'none'; }
+
+function selectCompanion(id) {
+    db.novelCompanionId = id;
+    commit();
+    updateCompanionBtn();
+    closeCompanionPicker();
+    if (novelCurrentTab === 'list') renderNovelList(); else renderFavoriteList();
+}
+
+// ── 小说详情页 ──
+function openNovelDetail(idx) {
+    if (!db.novelData || !db.novelData.books) return;
+    currentNovelIndex = idx;
+    currentChapterIndex = 0;
+    const book = db.novelData.books[idx];
+    const key = getBookKey(book);
+    // 如果收藏中有进度，从进度章节恢复
+    if (db.novelFavorites && db.novelFavorites[key]) {
+        currentChapterIndex = db.novelFavorites[key].progress || 0;
+    }
+    renderNovelDetailPage(book, key);
+}
+
+function openNovelDetailFromFav(key) {
+    if (!db.novelFavorites || !db.novelFavorites[key]) return;
+    const fav = db.novelFavorites[key];
+    currentNovelIndex = null; // from fav, not list index
+    currentChapterIndex = fav.progress || 0;
+    renderNovelDetailPage(fav.bookInfo, key);
+}
+
+function renderNovelDetailPage(book, key) {
+    document.getElementById('novel-detail-title').innerText = book.title;
+    // 更新收藏按钮状态
+    updateFavBtn(key);
+    const area = document.getElementById('novel-detail-area');
+    const cid = getNovelCompanionId();
+    const companionChar = cid !== null ? db.c.find(c => c.id === cid) : null;
+    const compTag = companionChar
+        ? `<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;"><img src="${companionChar.a||''}" style="width:22px;height:22px;border-radius:6px;object-fit:cover;background:#eee;" onerror="this.style.background='#ddd';this.src=''"><span style="font-size:12px;color:var(--link-color);">与${companionChar.n}一起阅读</span></div>`
+        : '';
+    const chapters = book.chapters || [];
+    // 目录列表
+    const tocHTML = chapters.length > 0 ? `
+        <div style="margin-bottom:18px;">
+            <div style="font-weight:bold;font-size:14px;color:#333;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                <span>📋</span><span>目录</span>
+            </div>
+            ${chapters.map((ch, i) => {
+                const isFav = db.novelFavorites && db.novelFavorites[key];
+                const chData = isFav && db.novelFavorites[key].chapters && db.novelFavorites[key].chapters[i];
+                const hasContent = !!chData;
+                const isProgress = (db.novelFavorites && db.novelFavorites[key] && db.novelFavorites[key].progress === i);
+                return `<div onclick="readChapter(${i},'${key}')" style="display:flex;align-items:center;padding:10px 12px;background:${isProgress?'#f0f7ff':'#fafafa'};border-radius:8px;margin-bottom:6px;cursor:pointer;border:1px solid ${isProgress?'#c5d9f0':'#eee'};">
+                    <span style="font-size:13px;color:${hasContent?'#333':'#999'};flex:1;">${ch}</span>
+                    ${isProgress?'<span style="font-size:11px;color:var(--link-color);">上次读到</span>':''}
+                    ${hasContent&&!isProgress?'<span style="font-size:11px;color:#bbb;">已读</span>':''}
+                    <span style="color:#ccc;margin-left:8px;font-size:14px;">›</span>
+                </div>`;
+            }).join('')}
+        </div>` : '';
+
+    area.innerHTML = `
+        <div style="font-weight:bold;font-size:20px;color:#222;margin-bottom:8px;">${book.title}</div>
+        ${compTag}
+        <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px;">${book.tags.map(t=>`<span style="font-size:11px;background:#f0f0f0;color:#666;padding:2px 7px;border-radius:8px;">#${t.replace(/^#/,'')}</span>`).join('')}</div>
+        <div style="font-size:13px;color:#666;line-height:1.7;margin-bottom:18px;padding:12px;background:#f9f9f9;border-radius:8px;">${book.summary}</div>
+        ${tocHTML}
+    `;
+    document.getElementById('novel-detail-room').style.display = 'flex';
+}
+
+function updateFavBtn(key) {
+    const btn = document.getElementById('novel-fav-btn');
+    if (!btn) return;
+    const isFav = db.novelFavorites && db.novelFavorites[key];
+    btn.innerHTML = isFav ? '⭐' : '☆';
+    btn.title = isFav ? '取消收藏' : '收藏';
+    btn._currentKey = key;
+}
+
+function toggleNovelFavorite() {
+    const btn = document.getElementById('novel-fav-btn');
+    const key = btn._currentKey;
+    if (!key) return;
+    if (!db.novelFavorites) db.novelFavorites = {};
+    if (db.novelFavorites[key]) {
+        delete db.novelFavorites[key];
+    } else {
+        // 找到 book info
+        let book = null;
+        if (currentNovelIndex !== null && db.novelData && db.novelData.books) {
+            book = db.novelData.books[currentNovelIndex];
+        } else if (db.novelFavorites[key]) {
+            book = db.novelFavorites[key].bookInfo;
+        }
+        if (!book) return;
+        // 收藏时，把临时缓存中已读章节一并带入
+        const existingChapters = {};
+        const chapters = book.chapters || [];
+        chapters.forEach((_, i) => {
+            const tempKey = key + '_' + i;
+            if (novelChapterTempCache[tempKey]) existingChapters[i] = novelChapterTempCache[tempKey];
+        });
+        db.novelFavorites[key] = { bookInfo: book, chapters: existingChapters, progress: currentChapterIndex || 0 };
+    }
+    commit();
+    updateFavBtn(key);
+    // 重新渲染目录（收藏状态可能改变高亮）
+    if (currentNovelIndex !== null && db.novelData) {
+        renderNovelDetailPage(db.novelData.books[currentNovelIndex], key);
+    } else if (db.novelFavorites[key]) {
+        renderNovelDetailPage(db.novelFavorites[key].bookInfo, key);
+    }
+}
+
+function closeNovelDetail() { document.getElementById('novel-detail-room').style.display = 'none'; }
+
+// ── 章节阅读 ──
+// 章节阅读页覆盖在详情页之上（z-index:1700）
+function ensureChapterRoom() {
+    let room = document.getElementById('novel-chapter-room');
+    if (!room) {
+        room = document.createElement('div');
+        room.id = 'novel-chapter-room';
+        room.style.cssText = 'position:absolute;inset:0;background:#fff;z-index:1700;display:none;flex-direction:column;';
+        room.innerHTML = `
+            <div class="nav">
+                <div class="back-btn" onclick="closeChapterRoom()">‹ 返回</div>
+                <div id="chapter-room-title" class="nav-title" style="max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
+            </div>
+            <div id="chapter-room-body" style="flex:1;overflow-y:auto;padding:16px;line-height:1.9;font-size:15px;color:#333;"></div>
+        `;
+        document.getElementById('phone-shell').appendChild(room);
+    }
+    return room;
+}
+
+function closeChapterRoom() {
+    const room = document.getElementById('novel-chapter-room');
+    if (room) room.style.display = 'none';
+}
+
+async function readChapter(chIdx, key) {
+    // Find book
+    let book = null;
+    if (currentNovelIndex !== null && db.novelData && db.novelData.books) {
+        book = db.novelData.books[currentNovelIndex];
+    } else if (db.novelFavorites && db.novelFavorites[key]) {
+        book = db.novelFavorites[key].bookInfo;
+    }
+    if (!book) return;
+
+    const chapterTitle = (book.chapters && book.chapters[chIdx]) || `第${chIdx+1}章`;
+    const room = ensureChapterRoom();
+    document.getElementById('chapter-room-title').innerText = chapterTitle;
+    const body = document.getElementById('chapter-room-body');
+    room.style.display = 'flex';
+
+    // 1. 优先从收藏缓存读取
+    if (db.novelFavorites && db.novelFavorites[key] && db.novelFavorites[key].chapters && db.novelFavorites[key].chapters[chIdx]) {
+        const cached = db.novelFavorites[key].chapters[chIdx];
+        renderChapterContent(cached, key, chIdx, book);
+        db.novelFavorites[key].progress = chIdx;
+        commit();
+        return;
+    }
+
+    // 2. 从临时缓存读取（未收藏时也不重复生成）
+    const tempKey = key + '_' + chIdx;
+    if (novelChapterTempCache[tempKey]) {
+        const cached = novelChapterTempCache[tempKey];
+        renderChapterContent(cached, key, chIdx, book);
+        // 如果此时已经收藏，同步进收藏缓存
+        if (db.novelFavorites && db.novelFavorites[key]) {
+            if (!db.novelFavorites[key].chapters) db.novelFavorites[key].chapters = {};
+            db.novelFavorites[key].chapters[chIdx] = cached;
+            db.novelFavorites[key].progress = chIdx;
+            commit();
+        }
+        return;
+    }
+
+    // 3. 生成章节
+    if (!db.api.u || !db.api.k) { alert("请先配置API"); return; }
+    body.innerHTML = `<div style="text-align:center;color:#999;padding:40px 0;">正在生成章节内容...</div>`;
+
+    const cid = getNovelCompanionId();
+    const companionChar = cid !== null ? db.c.find(c => c.id === cid) : null;
+    const needAnnotations = !!companionChar;
+
+    try {
+        const base = db.api.u.replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '');
+        let prompt;
+        if (needAnnotations) {
+            prompt = `请为小说《${book.title}》（简介：${book.summary}）的"${chapterTitle}"生成1000-2000字正文。
+同时，作为角色"${companionChar.n}"（性格简述：${companionChar.p.slice(0,150)}），选择3-5个有趣片段写简短点评（20-40字）。
+严格按JSON返回：{"chapter":"正文内容（\\n分段）","annotations":[{"quote":"原文精确片段","comment":"角色点评"}]}`;
+        } else {
+            prompt = `请为小说《${book.title}》（简介：${book.summary}）的"${chapterTitle}"生成1000-2000字正文，直接输出。`;
+        }
+        const res = await fetch(`${base}/chat/completions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${db.api.k}` },
+            body: JSON.stringify({ model: db.api.model || 'gpt-3.5-turbo', max_tokens: 2500, messages: [{ role: 'user', content: prompt }] })
+        });
+        const data = await res.json();
+        let text = data.choices[0].message.content.trim();
+        let chData;
+        if (needAnnotations) {
+            text = text.replace(/```json|```/g, '').trim();
+            chData = JSON.parse(text);
+        } else {
+            chData = { chapter: text, annotations: [] };
+        }
+
+        // 保存到临时缓存（无论是否收藏）
+        novelChapterTempCache[tempKey] = chData;
+
+        // 如果已收藏，同步保存到收藏缓存
+        if (db.novelFavorites && db.novelFavorites[key]) {
+            if (!db.novelFavorites[key].chapters) db.novelFavorites[key].chapters = {};
+            db.novelFavorites[key].chapters[chIdx] = chData;
+            db.novelFavorites[key].progress = chIdx;
+            commit();
+        }
+
+        renderChapterContent(chData, key, chIdx, book);
+    } catch(e) {
+        body.innerHTML = `<div style="color:red;padding:20px;">生成失败：${e.message}</div>`;
+    }
+}
+
+function renderChapterContent(chData, key, chIdx, book) {
+    const body = document.getElementById('chapter-room-body');
+    const cid = getNovelCompanionId();
+    const companionChar = cid !== null ? db.c.find(c => c.id === cid) : null;
+    const { chapter, annotations } = chData;
+    const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+    let escaped = esc(chapter);
+    if (companionChar && annotations && annotations.length > 0) {
+        annotations.forEach((ann, i) => {
+            const eq = esc(ann.quote);
+            if (escaped.indexOf(eq) === -1) return;
+            const charAvatar = esc(companionChar.a || '');
+            const charName = esc(companionChar.n);
+            const comment = esc(ann.comment);
+            const replacement = `<span class="ann-text" style="border-bottom:2px solid #576b95;cursor:pointer;position:relative;" onclick="toggleBubble(event,${i})">${eq}<span id="bubble-${i}" style="display:none;position:absolute;left:0;bottom:calc(100%+4px);background:#fff;border:1px solid #576b95;border-radius:10px;padding:8px 10px;font-size:12px;color:#333;z-index:10;min-width:150px;max-width:210px;box-shadow:0 2px 8px rgba(0,0,0,0.12);line-height:1.5;white-space:normal;"><img src="${charAvatar}" style="width:16px;height:16px;border-radius:4px;vertical-align:middle;margin-right:4px;object-fit:cover;background:#eee;" onerror="this.src=''">${charName}：${comment}</span></span>`;
+            escaped = escaped.replace(eq, replacement);
+        });
+    }
+
+    const paras = escaped.split('\n').filter(p => p.trim());
+
+    let header = '';
+    if (companionChar) {
+        header = `<div style="font-size:12px;color:var(--link-color);margin-bottom:14px;display:flex;align-items:center;gap:5px;padding:8px 10px;background:#f0f7ff;border-radius:8px;">
+            <img src="${esc(companionChar.a||'')}" style="width:18px;height:18px;border-radius:4px;object-fit:cover;background:#eee;" onerror="this.src=''">
+            <span>划线处为${esc(companionChar.n)}的段评，点击气泡查看</span>
+        </div>`;
+    }
+
+    // Chapter navigation
+    const chapters = book.chapters || [];
+    const navPrev = chIdx > 0
+        ? `<button onclick="readChapter(${chIdx-1},'${key}')" style="flex:1;padding:10px;background:#f0f0f0;border:none;border-radius:8px;cursor:pointer;font-size:14px;">‹ 上一章</button>`
+        : `<div style="flex:1;"></div>`;
+    const navNext = chIdx < chapters.length - 1
+        ? `<button onclick="readChapter(${chIdx+1},'${key}')" style="flex:1;padding:10px;background:var(--wechat-green);color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;">下一章 ›</button>`
+        : `<div style="flex:1;text-align:center;color:#bbb;font-size:13px;padding:10px;">— 完 —</div>`;
+
+    body.innerHTML = `
+        ${header}
+        ${paras.map(p=>`<p style="margin-bottom:14px;text-indent:2em;position:relative;">${p}</p>`).join('')}
+        <div style="display:flex;gap:10px;margin-top:24px;padding-top:16px;border-top:1px solid #eee;">
+            ${navPrev}${navNext}
+        </div>
+    `;
+    body.scrollTop = 0;
+}
+
+function toggleBubble(e, i) {
+    e.stopPropagation();
+    const bubble = document.getElementById('bubble-'+i);
+    if (!bubble) return;
+    const wasHidden = bubble.style.display === 'none';
+    document.querySelectorAll('[id^="bubble-"]').forEach(b => b.style.display = 'none');
+    if (wasHidden) bubble.style.display = 'inline-block';
+}
+document.addEventListener('click', function() {
+    document.querySelectorAll('[id^="bubble-"]').forEach(b => b.style.display = 'none');
+});
 
 commit();
 db.c.forEach(c => { if(c.autoOn) resetTimer(c.id); });
